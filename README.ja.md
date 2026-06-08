@@ -163,6 +163,59 @@ Irodori-TTS の依存関係は次のどちらかで入れてください。
 
 アプリの `Options` 画面から、キャラ名、キャラ設定、TTS Caption、参考音声、表情画像を編集できます。
 
+## キャラクター画像の生成
+
+`tools/generate_character_images.py` で、キャラクターごとの表情画像を生成できます。標準ライブラリだけで動くため、Rinon Voice Lab 本体に追加パッケージは不要です。
+
+まずは dry-run で、生成プロンプトと出力先だけ確認します。
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --dry-run \
+  --provider openai \
+  --character akari \
+  --expression neutral \
+  --expression happy
+```
+
+OpenAI APIで生成する場合は `OPENAI_API_KEY` を設定します。生成結果は `Character\<character-id>\expressions\<expression>\` に保存されます。`--update-profiles` を付けると、`profile.json` と `profile.txt` の該当表情パスも更新します。`neutral` を更新した場合は `portrait` も更新されます。
+
+```bash
+export OPENAI_API_KEY="sk-..."
+python3.10 -B tools/generate_character_images.py \
+  --provider openai \
+  --openai-model gpt-image-1.5 \
+  --openai-quality medium \
+  --character akari \
+  --expression neutral \
+  --expression happy \
+  --update-profiles
+```
+
+Stability Matrixを使う場合は、Stable Diffusion WebUI互換のパッケージを起動し、起動引数でAPIを有効化します。標準の接続先は `http://127.0.0.1:7860` です。
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --provider sd-webui \
+  --sd-webui-url http://127.0.0.1:7860 \
+  --character akari \
+  --expression neutral \
+  --expression happy \
+  --size 768x768 \
+  --update-profiles
+```
+
+複数キャラクターや既存プロフィールの全表情をまとめて作ることもできますが、生成時間とAPI費用が増えます。最初は1キャラクター、1から2表情だけで確認してください。
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --provider sd-webui \
+  --character rinon \
+  --all-profile-expressions \
+  --variant-count 1 \
+  --update-profiles
+```
+
 ## 2PリモートTTS
 
 通常は、1P/2Pの音声を同じPCの Irodori-TTS で生成します。

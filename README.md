@@ -173,6 +173,46 @@ Each character folder can contain:
 Use the Options dialog in the app to edit character names, prompts, TTS
 captions, reference audio, and expression images.
 
+## Character Image Generation
+
+`tools/generate_character_images.py` can generate character expression images
+with either the OpenAI Image API or a Stable Diffusion WebUI-compatible local
+server launched from Stability Matrix. The script uses only the Python standard
+library.
+
+Preview prompts and output paths without making API calls:
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --dry-run \
+  --provider openai \
+  --character akari \
+  --expression neutral \
+  --expression happy
+```
+
+Generate with OpenAI:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+python3.10 -B tools/generate_character_images.py \
+  --provider openai \
+  --character akari \
+  --expression neutral \
+  --update-profiles
+```
+
+Generate with a Stable Diffusion WebUI-compatible API:
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --provider sd-webui \
+  --sd-webui-url http://127.0.0.1:7860 \
+  --character akari \
+  --expression neutral \
+  --update-profiles
+```
+
 ## Optional 2P Remote TTS
 
 By default, both 1P and 2P voices are generated on the local Irodori-TTS
