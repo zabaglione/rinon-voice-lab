@@ -185,12 +185,13 @@ export GEMINI_API_KEY="..."
 python3.10 -B tools/generate_character_images.py \
   --provider nano-banana \
   --google-model gemini-3.1-flash-image \
-  --google-image-size 1K \
   --character akari \
   --expression neutral \
   --expression happy \
   --update-profiles
 ```
+
+Google側の `generationConfig` が利用できる環境では、`--google-send-generation-config` と `--google-aspect-ratio`、`--google-image-size` で出力比率やサイズを指定できます。APIが `responseModalities` や `responseFormat` を拒否する場合は、このオプションを付けずに実行してください。
 
 より古い Nano Banana モデルを使う場合は、`--google-model gemini-2.5-flash-image` を指定します。高品質寄りの Nano Banana Pro を使う場合は、利用可能な環境で `--google-model gemini-3-pro-image` を指定します。
 

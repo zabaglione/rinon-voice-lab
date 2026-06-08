@@ -208,6 +208,11 @@ def parse_args() -> argparse.Namespace:
         help="Google image size for Gemini 3 image models.",
     )
     parser.add_argument(
+        "--google-send-generation-config",
+        action="store_true",
+        help="Send optional Google generationConfig fields for aspect ratio and image size.",
+    )
+    parser.add_argument(
         "--sd-webui-url",
         default=os.environ.get("SD_WEBUI_URL", DEFAULT_SD_WEBUI_URL),
         help="Stable Diffusion WebUI base URL.",
@@ -440,10 +445,9 @@ def generate_google(prompt: str, args: argparse.Namespace) -> bytes:
     model = normalize_google_model(args.google_model)
     api_version = str(args.google_api_version).strip().strip("/") or "v1"
     url = GOOGLE_IMAGE_URL_TEMPLATE.format(api_version=api_version, model=model)
-    payload: dict[str, Any] = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": google_image_generation_config(args),
-    }
+    payload: dict[str, Any] = {"contents": [{"parts": [{"text": prompt}]}]}
+    if args.google_send_generation_config:
+        payload["generationConfig"] = google_image_generation_config(args)
     result = request_json(url, payload, {"x-goog-api-key": api_key}, args.timeout)
     return extract_google_image_bytes(result)
 

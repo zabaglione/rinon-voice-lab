@@ -198,11 +198,15 @@ export GEMINI_API_KEY="..."
 python3.10 -B tools/generate_character_images.py \
   --provider nano-banana \
   --google-model gemini-3.1-flash-image \
-  --google-image-size 1K \
   --character akari \
   --expression neutral \
   --update-profiles
 ```
+
+When your Google API environment accepts optional image generation config, add
+`--google-send-generation-config` with `--google-aspect-ratio` or
+`--google-image-size`. Leave it off if the API rejects `responseModalities` or
+`responseFormat`.
 
 Generate with OpenAI:
 
