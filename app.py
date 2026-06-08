@@ -1207,7 +1207,32 @@ def build_emoji_choice_prompt() -> str:
     return "\n".join(lines)
 
 
+def strip_lmstudio_special_tokens(text: str) -> str:
+    cleaned = re.sub(r"<\|[^>\r\n]{0,120}>", "", str(text or ""))
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def parse_lmstudio_reply(raw: str, allowed_emojis: set[str]) -> tuple[str, str]:
+    def json_string_field(value: str, field: str) -> str:
+        match = re.search(rf'"{re.escape(field)}"\s*:\s*"', value)
+        if not match:
+            return ""
+        start = match.end()
+        escape = False
+        for index in range(start, len(value)):
+            char = value[index]
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                encoded = '"' + value[start:index] + '"'
+                try:
+                    return str(json.loads(encoded)).strip()
+                except Exception:
+                    return value[start:index].strip()
+        return ""
+
     def decode_reply(value: str) -> tuple[str, str] | None:
         try:
             data = json.loads(value)
@@ -1215,10 +1240,17 @@ def parse_lmstudio_reply(raw: str, allowed_emojis: set[str]) -> tuple[str, str]:
             return None
         if not isinstance(data, dict):
             return None
-        reply = str(data.get("text") or data.get("reply") or "").strip()
-        emoji = str(data.get("emoji") or "").strip()
+        reply = strip_lmstudio_special_tokens(str(data.get("text") or data.get("reply") or ""))
+        emoji = strip_lmstudio_special_tokens(str(data.get("emoji") or ""))
         if not reply:
             return None
+        return reply, emoji if emoji in allowed_emojis else ""
+
+    def loose_decode_reply(value: str) -> tuple[str, str] | None:
+        reply = strip_lmstudio_special_tokens(json_string_field(value, "text") or json_string_field(value, "reply"))
+        if not reply:
+            return None
+        emoji = strip_lmstudio_special_tokens(json_string_field(value, "emoji"))
         return reply, emoji if emoji in allowed_emojis else ""
 
     def json_object_candidates(value: str) -> list[str]:
@@ -1254,10 +1286,13 @@ def parse_lmstudio_reply(raw: str, allowed_emojis: set[str]) -> tuple[str, str]:
     candidates.extend(match.group(1).strip() for match in re.finditer(r"```(?:json)?\s*(.*?)```", text, re.DOTALL))
     candidates.extend(json_object_candidates(text))
     for candidate in reversed(candidates):
-        parsed = decode_reply(candidate)
+        parsed = decode_reply(candidate) or loose_decode_reply(candidate)
         if parsed:
             return parsed
-    return raw.strip(), ""
+    fallback = strip_lmstudio_special_tokens(text)
+    if fallback.startswith(("{", "[")) or re.search(r'"\s*(?:text|reply|emoji)"\s*:', fallback):
+        return "", ""
+    return fallback, ""
 
 
 def strip_speaker_prefix(text: str, speaker: str) -> str:
@@ -2370,6 +2405,7 @@ def request_lmstudio(
         )
     allowed_emojis = {item["emoji"] for item in load_emoji_items()}
     message, emoji = parse_lmstudio_reply(content, allowed_emojis) if auto_emoji else (content, "")
+    message = strip_lmstudio_special_tokens(message)
     message = strip_speaker_prefix(message, speaker)
     message = strip_irodori_style_marks(message)
     if no_dialogue:
