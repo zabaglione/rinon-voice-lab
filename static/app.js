@@ -101,6 +101,7 @@ let autoWebContext = "";
 let autoWebQuery = "";
 let autoWebResults = [];
 let autoTurnCount = 0;
+let autoTopicTurnCount = 0;
 let autoRunId = 0;
 let autoPrefetchRevision = 0;
 let autoTurnSequence = 0;
@@ -509,6 +510,82 @@ function twoOnlyGuidance() {
   return twoPlayerMode.checked && twoOnlyMode.checked
     ? "重要: この会話世界にユーザーや観客は存在しません。ユーザー入力は登場人物の発言ではなく、外部からの進行指示/お題です。リノンとルヴィアだけが同じ場にいて、互いにだけ話します。ユーザーへ話しかけたり、ユーザーの反応を求めたり、「きみ」「あなた」などで外部の相手を呼ばないでください。\n"
     : "";
+}
+
+function autoProgressGuidance(turnCount, topic, isNewTopic = false) {
+  const topicText = String(topic || "").trim();
+  const topicKind = classifyAutoTopic(topicText);
+  const topicClause = topicText ? `Topic: "${topicText}". ` : "";
+  const roles = autoTopicProgressRoles(topicKind);
+  const phase = roles[Math.min(Math.max(Number(turnCount || 1), 1), roles.length) - 1];
+  const reset = isNewTopic ? "Treat this as a new agenda and do not spend the turn closing the old topic. " : "";
+  return (
+    `${reset}${topicClause}Conversation type: ${topicKind}. Turn role: ${phase} ` +
+    "Do not spend a turn only setting up, praising the topic, asking what the other person thinks, or saying that details will come later. " +
+    "Add at least one specific action, object, place, result, or emotion before any question. " +
+    "Do not hand the topic back without answering, challenging, or deepening it. " +
+    "At most one short question may appear, and only after new information has been added.\n"
+  );
+}
+
+function classifyAutoTopic(topic) {
+  const text = String(topic || "").toLowerCase();
+  if (
+    /失敗|失敗談|やらか|黒歴史|ミス|しくじ|子供|子ども|幼い|昔|思い出|体験|経験|初めて|学生|story|memory|mistake|failure|childhood|experience/.test(
+      text
+    )
+  ) {
+    return "story";
+  }
+  if (/どっち|どちら|派|対決|比較|比べ|賛成|反対|\bvs\b|versus|debate|compare|which/.test(text)) {
+    return "debate";
+  }
+  if (/好き|嫌い|推し|お気に入り|おすすめ|好物|苦手|preference|favorite|favourite|recommend/.test(text)) {
+    return "preference";
+  }
+  if (/予定|計画|明日|今後|将来|旅行|休日|週末|やりたい|したい|plan|schedule|future|tomorrow/.test(text)) {
+    return "plan";
+  }
+  if (/なぜ|理由|仕組み|説明|解説|とは|どうして|考察|explain|why|how|reason/.test(text)) {
+    return "explain";
+  }
+  return "freeform";
+}
+
+function autoTopicProgressRoles(kind) {
+  const roles = {
+    story: [
+      "Open with the concrete incident immediately: when or where it happened, what went wrong, and what the speaker did.",
+      "React to the incident, then add a consequence, embarrassment, damage, or lesson with one specific detail.",
+      "Advance the story to aftermath, a reveal, a changed relationship, or a sharper lesson.",
+    ],
+    preference: [
+      "State a clear preference immediately and give a sensory memory, example, or concrete reason.",
+      "Respond with a contrasting preference or supporting example, then add one concrete experience.",
+      "Deepen the preference with a tradeoff, exception, memory, or changed view.",
+    ],
+    debate: [
+      "Take a clear side immediately and give one concrete reason or example.",
+      "Push back or refine the previous side with a specific counterexample or concession.",
+      "Move the debate toward a sharper criterion, compromise, reversal, or deciding factor.",
+    ],
+    plan: [
+      "Name a concrete plan immediately: action, time, place, or intended result.",
+      "React to the plan and add a constraint, risk, preparation step, or better alternative.",
+      "Move to outcome, priority, backup plan, or what changes because of the plan.",
+    ],
+    explain: [
+      "Give the core answer immediately, then add one concrete example.",
+      "Build on the explanation with a cause, contrast, exception, or practical implication.",
+      "Move to a consequence, edge case, analogy, or decision the explanation enables.",
+    ],
+    freeform: [
+      "Make a concrete claim or scene immediately instead of opening with meta commentary.",
+      "Respond to the previous line and add one new fact, action, contrast, or emotional shift.",
+      "Move to consequence, decision, reversal, deeper reason, or specific next beat.",
+    ],
+  };
+  return roles[kind] || roles.freeform;
 }
 
 function queueAutoTopic(text) {
@@ -1020,6 +1097,11 @@ function clearContext() {
   autoWebContext = "";
   autoWebQuery = "";
   autoWebResults = [];
+  autoTopic = "";
+  autoTopicQueue = [];
+  autoTurnCount = 0;
+  autoTopicTurnCount = 0;
+  autoNoDialogue = false;
   history.length = 0;
   messagesEl.innerHTML = "";
   queue = [];
@@ -1690,15 +1772,17 @@ async function startAutoConversation() {
   autoWebQuery = "";
   autoWebResults = [];
   autoTurnCount = 0;
+  autoTopicTurnCount = 0;
   autoNoDialogue = wantsNoDialogue(topic);
   updateAutoControls();
   sessionStatus.textContent = "auto running";
   const firstSpeaker = autoNextSpeaker;
   autoNextSpeaker = otherSpeaker(firstSpeaker);
   autoTurnCount += 1;
+  autoTopicTurnCount = 1;
   const firstAutoMessage = autoNoDialogue
     ? `${twoOnlyGuidance()}${noDialogueGuidance()}お題: ${autoTopic}\nこれは2人の自動進行の第${autoTurnCount}ターンです。通常の会話として返さず、発声・吐息・擬音の強弱、間、苦しさ、気持ちよさの変化だけで少し展開してください。`
-    : `${twoOnlyGuidance()}お題: ${autoTopic}\nこれは2人の自動会話の第${autoTurnCount}ターンです。お題を会話の中心に置き、結論へ急がず、相手が次に返しやすい問い・感想・小さなズレを残して始めてください。`;
+    : `${twoOnlyGuidance()}お題: ${autoTopic}\nThis is auto dialogue turn ${autoTurnCount}. Keep the topic central and advance it now.\n${autoProgressGuidance(autoTopicTurnCount, autoTopic, true)}`;
   await sendChatTurn({
     message: firstAutoMessage,
     visibleUserText: `お題: ${topic}`,
@@ -1716,11 +1800,15 @@ async function continueAutoConversation() {
   if (!canPrefetchAutoTurn()) return;
   const runIdAtStart = autoRunId;
   const revisionAtStart = autoPrefetchRevision;
+  const topicBeforeSend = autoTopic;
+  const topicTurnCountBeforeSend = autoTopicTurnCount;
+  const noDialogueBeforeSend = autoNoDialogue;
   autoPending = true;
   const speaker = autoNextSpeaker;
   autoNextSpeaker = otherSpeaker(speaker);
   autoTurnCount += 1;
   const queuedTopic = consumeQueuedAutoTopic();
+  autoTopicTurnCount = queuedTopic ? 1 : autoTopicTurnCount + 1;
   const shouldRefreshWeb = Boolean(queuedTopic && webSearch.checked);
   sessionStatus.textContent = queuedTopic ? `auto: ${speaker} / new topic` : `auto: ${speaker}`;
   const partner = otherSpeaker(speaker);
@@ -1732,9 +1820,10 @@ async function continueAutoConversation() {
     : autoTopic
       ? `会話のお題は「${autoTopic}」です。第${autoTurnCount}ターンとして、このお題から離れすぎず、直前の発言を受けて少しだけ展開を進めてください。\n`
       : "";
+  const progressGuidance = autoProgressGuidance(autoTopicTurnCount, autoTopic, Boolean(queuedTopic));
   const nextAutoMessage = autoNoDialogue
     ? `${twoOnlyGuidance()}${noDialogueGuidance()}${queuedTopic ? "ここから新しいお題に切り替えます。" : ""}会話のお題は「${autoTopic}」です。第${autoTurnCount}ターンです。直前の発声を受けて、普通のセリフではなく、発声・吐息・擬音の流れだけを少し変化させて続けてください。呼びかけ、質問、説明、選択肢提示は禁止です。`
-    : `${twoOnlyGuidance()}${topicLine}${previousLine}あなたは${speaker}です。${partner}の発言を受けて、${partner}に返す一言として自然に会話を続けてください。単純な相槌で終わらせず、前の発言から一歩だけ発展させてください。新しい情報、疑問、軽い反論、感情の変化のどれかを少し入れて、次の発言につながる余韻を残してください。`;
+    : `${twoOnlyGuidance()}${topicLine}${previousLine}${progressGuidance}あなたは${speaker}です。${partner}の発言を受けて、${partner}に返す一言として自然に会話を続けてください。単純な相槌で終わらせず、前の発言から一歩だけ発展させてください。新しい情報、疑問、軽い反論、感情の変化のどれかを少し入れて、次の発言につながる余韻を残してください。`;
   let accepted = false;
   try {
     accepted = await sendChatTurn({
@@ -1755,6 +1844,12 @@ async function continueAutoConversation() {
       if (!accepted && autoMode) {
         autoNextSpeaker = speaker;
         autoTurnCount = Math.max(0, autoTurnCount - 1);
+        autoTopicTurnCount = topicTurnCountBeforeSend;
+        autoNoDialogue = noDialogueBeforeSend;
+        if (queuedTopic) {
+          autoTopic = topicBeforeSend;
+          autoTopicQueue.unshift(queuedTopic);
+        }
       }
       autoPending = false;
       updateAutoControls();
@@ -1775,6 +1870,7 @@ function stopAutoConversation() {
   autoWebQuery = "";
   autoWebResults = [];
   autoTurnCount = 0;
+  autoTopicTurnCount = 0;
   autoNoDialogue = false;
   updateAutoControls();
   sessionStatus.textContent = interactionLocked ? "auto stopping" : "auto stopped";
