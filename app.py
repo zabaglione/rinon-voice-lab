@@ -36,8 +36,14 @@ CHARACTER_ROOT = APP_ROOT / "Character"
 DEFAULT_IRODORI_ROOT = (APP_ROOT.parent / "Irodori-TTS").resolve()
 IRODORI_ROOT = Path(os.environ.get("IRODORI_ROOT", str(DEFAULT_IRODORI_ROOT))).resolve()
 LM_STUDIO_URL = os.environ.get("LM_STUDIO_URL", "http://127.0.0.1:1234/v1").rstrip("/")
+LM_STUDIO_BASE_URL = os.environ.get(
+    "LM_STUDIO_BASE_URL",
+    re.sub(r"/v1/?$", "", LM_STUDIO_URL),
+).rstrip("/")
 DEFAULT_MODEL = os.environ.get("LM_STUDIO_MODEL", "gemma-4-12b-it")
 DEFAULT_CONTEXT_LIMIT = int(os.environ.get("LM_STUDIO_CONTEXT_LIMIT", "8200"))
+DEFAULT_MAX_OUTPUT_TOKENS = int(os.environ.get("LM_STUDIO_MAX_OUTPUT_TOKENS", "0"))
+MAX_OUTPUT_TOKENS_LIMIT = int(os.environ.get("LM_STUDIO_MAX_OUTPUT_TOKENS_LIMIT", "4096"))
 LM_COMPACT_CONTEXT_LIMIT = int(os.environ.get("LM_COMPACT_CONTEXT_LIMIT", "4200"))
 LM_RECENT_MESSAGE_COUNT = int(os.environ.get("LM_RECENT_MESSAGE_COUNT", "12"))
 LM_SUMMARY_CHAR_LIMIT = int(os.environ.get("LM_SUMMARY_CHAR_LIMIT", "1400"))
@@ -97,6 +103,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 Irodori_lock = threading.Lock()
 Irodori_module = None
 Emoji_items_cache = None
+LMStudio_model_cache: tuple[float, dict[str, dict]] = (0.0, {})
 Luvia_remote_ref_cache: dict[str, str] = {}
 External_speak_lock = threading.Lock()
 External_speak_events = deque(maxlen=80)
@@ -799,6 +806,7 @@ def save_session_profile(payload: dict) -> dict:
             "referencePath": str(settings.get("referencePath") or IRODORI_REF_WAV),
             "secondReferencePath": str(settings.get("secondReferencePath") or LUVIA_REF_WAV),
             "contextLimit": int(settings.get("contextLimit") or DEFAULT_CONTEXT_LIMIT),
+            "maxOutputTokens": sanitize_max_output_tokens(settings.get("maxOutputTokens")),
             "model": str(settings.get("model") or DEFAULT_MODEL),
             "steps": int(settings.get("steps") or 12),
             "speechRate": str(settings.get("speechRate") or "normal"),
@@ -1189,19 +1197,63 @@ def build_emoji_choice_prompt() -> str:
 
 
 def parse_lmstudio_reply(raw: str, allowed_emojis: set[str]) -> tuple[str, str]:
-    text = raw.strip()
-    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
-    if fenced:
-        text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
+    def decode_reply(value: str) -> tuple[str, str] | None:
+        try:
+            data = json.loads(value)
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
         reply = str(data.get("text") or data.get("reply") or "").strip()
         emoji = str(data.get("emoji") or "").strip()
-        if reply:
-            return reply, emoji if emoji in allowed_emojis else ""
-    except Exception:
-        pass
+        if not reply:
+            return None
+        return reply, emoji if emoji in allowed_emojis else ""
+
+    def json_object_candidates(value: str) -> list[str]:
+        candidates: list[str] = []
+        start = -1
+        depth = 0
+        in_string = False
+        escape = False
+        for index, char in enumerate(value):
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                if depth == 0:
+                    start = index
+                depth += 1
+            elif char == "}" and depth:
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    candidates.append(value[start : index + 1])
+                    start = -1
+        return candidates
+
+    text = raw.strip()
+    candidates = [text]
+    candidates.extend(match.group(1).strip() for match in re.finditer(r"```(?:json)?\s*(.*?)```", text, re.DOTALL))
+    candidates.extend(json_object_candidates(text))
+    for candidate in reversed(candidates):
+        parsed = decode_reply(candidate)
+        if parsed:
+            return parsed
     return raw.strip(), ""
+
+
+def strip_speaker_prefix(text: str, speaker: str) -> str:
+    name = str(speaker or "").strip()
+    if not name:
+        return str(text or "").strip()
+    return re.sub(rf"^\s*{re.escape(name)}\s*[:：]\s*", "", str(text or "")).strip()
 
 
 def strip_irodori_style_marks(text: str) -> str:
@@ -1281,6 +1333,192 @@ def reply_style_for_length(reply_length: str) -> tuple[str, int, int]:
     if mode == "short":
         return "返答は1から2文を基本にしてください。", 360, 3
     return "返答は3から5文くらいまで使って、自然な会話調で答えてください。", 720, 6
+
+
+def sanitize_max_output_tokens(value: object) -> int:
+    try:
+        tokens = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    if tokens <= 0:
+        return 0
+    return max(64, min(tokens, MAX_OUTPUT_TOKENS_LIMIT))
+
+
+def normalize_lmstudio_model_info(item: dict) -> dict:
+    model_id = str(item.get("key") or item.get("id") or "").strip()
+    quantization = item.get("quantization")
+    if isinstance(quantization, dict):
+        quantization_name = str(quantization.get("name") or "")
+        bits_per_weight = quantization.get("bits_per_weight")
+    else:
+        quantization_name = str(quantization or "")
+        bits_per_weight = None
+    loaded_context = int(item.get("loaded_context_length") or 0)
+    loaded_instances = item.get("loaded_instances") if isinstance(item.get("loaded_instances"), list) else []
+    for instance in loaded_instances:
+        if not isinstance(instance, dict):
+            continue
+        if instance.get("id") not in {None, "", model_id}:
+            continue
+        config = instance.get("config") if isinstance(instance.get("config"), dict) else {}
+        loaded_context = int(config.get("context_length") or loaded_context or 0)
+        break
+    max_context = int(item.get("max_context_length") or loaded_context or 0)
+    capabilities = item.get("capabilities")
+    reasoning_default = ""
+    reasoning_options: list[str] = []
+    if isinstance(capabilities, dict):
+        reasoning = capabilities.get("reasoning")
+        if isinstance(reasoning, dict):
+            reasoning_default = str(reasoning.get("default") or "")
+            allowed = reasoning.get("allowed_options")
+            if isinstance(allowed, list):
+                reasoning_options = [str(option) for option in allowed]
+    return {
+        "id": model_id,
+        "type": item.get("type"),
+        "architecture": item.get("architecture") or item.get("arch"),
+        "format": item.get("format") or item.get("compatibility_type"),
+        "quantization": quantization_name,
+        "bitsPerWeight": bits_per_weight,
+        "sizeBytes": item.get("size_bytes"),
+        "state": item.get("state") or ("loaded" if loaded_instances else "not-loaded"),
+        "maxContextLength": max_context,
+        "loadedContextLength": loaded_context or max_context,
+        "reasoningDefault": reasoning_default,
+        "reasoningOptions": reasoning_options,
+    }
+
+
+def get_lmstudio_model_info(force: bool = False) -> dict[str, dict]:
+    global LMStudio_model_cache
+    cached_at, cached = LMStudio_model_cache
+    if cached and not force and time.time() - cached_at < 15:
+        return cached
+    headers = {}
+    api_token = os.environ.get("LM_API_TOKEN", "").strip()
+    if api_token:
+        headers["Authorization"] = f"Bearer {api_token}"
+    for path in ("/api/v1/models", "/api/v0/models"):
+        try:
+            request = urllib.request.Request(f"{LM_STUDIO_BASE_URL}{path}", headers=headers)
+            with urllib.request.urlopen(request, timeout=3) as res:
+                data = json.loads(res.read().decode("utf-8"))
+            raw_models = data.get("models") if isinstance(data.get("models"), list) else data.get("data", [])
+            models = {
+                info["id"]: info
+                for info in (normalize_lmstudio_model_info(item) for item in raw_models if isinstance(item, dict))
+                if info.get("id")
+            }
+            if models:
+                LMStudio_model_cache = (time.time(), models)
+                return models
+        except Exception:
+            continue
+    return cached
+
+
+def lmstudio_model_detail(model: str | None) -> dict:
+    selected = str(model or DEFAULT_MODEL).strip()
+    return get_lmstudio_model_info().get(selected, {})
+
+
+def model_uses_reasoning_budget(model: str | None, model_info: dict | None = None) -> bool:
+    info = model_info or {}
+    options = {str(option).lower() for option in info.get("reasoningOptions", [])}
+    default = str(info.get("reasoningDefault") or "").lower()
+    if default and default != "off":
+        return True
+    if options - {"off"}:
+        return True
+    name = str(model or "").lower()
+    return any(
+        marker in name
+        for marker in (
+            "a4b-qat",
+            "gpt-oss",
+            "reasoning",
+            "thinking",
+            "deepseek-r1",
+        )
+    )
+
+
+def round_output_tokens(value: int, step: int = 512) -> int:
+    return min(MAX_OUTPUT_TOKENS_LIMIT, max(64, ((int(value) + step - 1) // step) * step))
+
+
+def messages_include_web_context(messages: list[dict[str, str]]) -> bool:
+    return any("Web検索結果" in str(item.get("content") or "") for item in messages)
+
+
+def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
+    text = "\n".join(f"{item.get('role', '')}: {item.get('content', '')}" for item in messages)
+    # Conservative fallback when LM Studio SDK tokenization is not available.
+    return len(text) + (len(messages) * 12)
+
+
+def max_output_token_limit(requested: object = 0) -> int:
+    explicit_tokens = sanitize_max_output_tokens(requested)
+    if explicit_tokens:
+        return explicit_tokens
+    env_tokens = sanitize_max_output_tokens(DEFAULT_MAX_OUTPUT_TOKENS)
+    if env_tokens:
+        return env_tokens
+    return MAX_OUTPUT_TOKENS_LIMIT
+
+
+def model_context_length(model_info: dict | None) -> int:
+    info = model_info or {}
+    try:
+        return int(info.get("loadedContextLength") or info.get("maxContextLength") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def context_limited_output_ceiling(
+    prompt_messages: list[dict[str, str]],
+    model_info: dict | None,
+    requested: object = 0,
+) -> int:
+    limit = max_output_token_limit(requested)
+    context_length = model_context_length(model_info)
+    if context_length <= 0:
+        return limit
+    prompt_tokens = estimate_prompt_tokens(prompt_messages)
+    safety_margin = max(256, min(2048, context_length // 64))
+    available = context_length - prompt_tokens - safety_margin
+    if available <= 0:
+        return 64
+    return max(64, min(limit, available))
+
+
+def resolve_max_output_tokens(
+    reply_length: str,
+    model: str | None,
+    base_tokens: int,
+    requested: object = 0,
+    auto_emoji: bool = False,
+    messages: list[dict[str, str]] | None = None,
+    prompt_messages: list[dict[str, str]] | None = None,
+    model_info: dict | None = None,
+) -> int:
+    ceiling = context_limited_output_ceiling(prompt_messages or messages or [], model_info, requested)
+    configured_tokens = sanitize_max_output_tokens(requested) or sanitize_max_output_tokens(DEFAULT_MAX_OUTPUT_TOKENS)
+    if configured_tokens:
+        return min(ceiling, configured_tokens)
+    if not model_uses_reasoning_budget(model, model_info):
+        return min(ceiling, base_tokens)
+    reasoning_tokens = base_tokens * 3
+    if messages and messages_include_web_context(messages):
+        reasoning_tokens += base_tokens
+    if auto_emoji:
+        reasoning_tokens += base_tokens
+    mode = str(reply_length or "normal").strip().lower()
+    if mode == "long":
+        reasoning_tokens += base_tokens
+    return min(ceiling, round_output_tokens(base_tokens + reasoning_tokens))
 
 
 def tts_duration_scale_for_rate(value: object) -> float:
@@ -1451,6 +1689,23 @@ def web_search(query: str, limit: int = 3) -> list[dict[str, str]]:
     return results
 
 
+WEB_URL_PATTERN = re.compile(r"https?://[^\s<>'\"）)]*", re.IGNORECASE)
+
+
+def extract_web_urls(text: str, limit: int = 2) -> list[str]:
+    urls: list[str] = []
+    for raw in WEB_URL_PATTERN.findall(str(text or "")):
+        url = raw.rstrip("。、，,.!?！？")
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        if url not in urls:
+            urls.append(url)
+        if len(urls) >= limit:
+            break
+    return urls
+
+
 WEB_INTENT_TERMS = (
     "評判",
     "口コミ",
@@ -1495,6 +1750,9 @@ def extract_web_query_terms(text: str, include_intents: bool = True) -> list[str
 
 
 def build_continuous_web_query(user_text: str, history: list[dict[str, str]]) -> str:
+    direct_urls = extract_web_urls(user_text)
+    if direct_urls:
+        return " ".join(direct_urls)
     current_terms = extract_web_query_terms(user_text, include_intents=True)
     inherited: list[str] = []
     for item in reversed(history[-8:]):
@@ -1539,11 +1797,12 @@ def request_lmstudio(
     reply_length: str,
     character_prompt: str,
     user_address: str,
+    max_output_tokens: object = 0,
     no_dialogue: bool = False,
     speaker: str = "リノン",
     two_only_mode: bool = False,
-) -> tuple[str, str, str, int]:
-    length_instruction, max_tokens, chunk_limit = reply_style_for_length(reply_length)
+) -> tuple[str, str, str, int, int]:
+    length_instruction, base_max_tokens, chunk_limit = reply_style_for_length(reply_length)
     address = str(user_address or "").strip() or "あなた"
     address_instruction = (
         f"\nユーザーへの呼びかけは「{address}」を使ってください。"
@@ -1591,7 +1850,6 @@ def request_lmstudio(
             *messages,
         ],
         "temperature": 0.7,
-        "max_tokens": max_tokens,
         "stream": False,
     }
     payload["messages"][0]["content"] = (
@@ -1605,32 +1863,61 @@ def request_lmstudio(
         "思考過程は出さず、最終回答だけを出してください。/no_think"
         f"{emoji_instruction}"
     )
+    model_info = lmstudio_model_detail(model)
+    max_tokens = resolve_max_output_tokens(
+        reply_length,
+        model,
+        base_max_tokens,
+        max_output_tokens,
+        auto_emoji=auto_emoji,
+        messages=messages,
+        prompt_messages=payload["messages"],
+        model_info=model_info,
+    )
+    payload["max_tokens"] = max_tokens
     req = urllib.request.Request(
         f"{LM_STUDIO_URL}/chat/completions",
         data=json_bytes(payload),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=90) as res:
-        data = json.loads(res.read().decode("utf-8"))
-    choice_message = data["choices"][0]["message"]
+    try:
+        with urllib.request.urlopen(req, timeout=90) as res:
+            data = json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            error_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            error_body = str(exc)
+        raise RuntimeError(f"LM Studio HTTP {exc.code}: {compact_text(error_body, 420)}") from exc
+    choice = data["choices"][0]
+    choice_message = choice["message"]
     content = str(choice_message.get("content") or "").strip()
     if not content:
+        reasoning = str(choice_message.get("reasoning_content") or choice_message.get("reasoning") or "").strip()
+        finish_reason = str(choice.get("finish_reason") or "")
         # Some local reasoning models can spend the whole budget in reasoning_content.
-        # Return a visible explanation instead of silently handing an empty string to TTS.
+        # The budget is precomputed from LM Studio model metadata, so report the cap clearly.
+        if reasoning:
+            raise RuntimeError(
+                "LM Studio returned reasoning but no final content "
+                f"(finish_reason={finish_reason or 'unknown'}, max_tokens={max_tokens}). "
+                "Increase Max output tokens or use a non-reasoning model."
+            )
         raise RuntimeError(
             "LM Studio returned empty assistant content. Try a non-reasoning model, "
             "or add /no_think to the prompt/model preset."
         )
     allowed_emojis = {item["emoji"] for item in load_emoji_items()}
     message, emoji = parse_lmstudio_reply(content, allowed_emojis) if auto_emoji else (content, "")
+    message = strip_speaker_prefix(message, speaker)
     message = strip_irodori_style_marks(message)
     if no_dialogue:
         message = sanitize_no_dialogue_reply(message)
     if not message:
         raise RuntimeError("LM Studio returned only style marks and no speakable text.")
     model_used = data.get("model") or payload["model"]
-    return message, model_used, emoji, chunk_limit
+    return message, model_used, emoji, chunk_limit, max_tokens
 
 
 def ensure_irodori_module():
@@ -2066,8 +2353,12 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {
                     "lmStudioUrl": LM_STUDIO_URL,
+                    "lmStudioBaseUrl": LM_STUDIO_BASE_URL,
                     "models": diagnostics["models"],
+                    "modelDetails": list(get_lmstudio_model_info().values()),
                     "contextLimit": DEFAULT_CONTEXT_LIMIT,
+                    "maxOutputTokens": DEFAULT_MAX_OUTPUT_TOKENS,
+                    "maxOutputTokensLimit": MAX_OUTPUT_TOKENS_LIMIT,
                     "irodoriRoot": str(IRODORI_ROOT),
                     "irodoriReady": diagnostics["irodoriRootExists"] and diagnostics["irodoriPythonExists"],
                     "checkpoint": IRODORI_CHECKPOINT,
@@ -2305,6 +2596,7 @@ class Handler(BaseHTTPRequestHandler):
             auto_emoji = bool(body.get("autoEmoji", True))
             no_dialogue = bool(body.get("noDialogue", False))
             reply_length = str(body.get("replyLength") or "normal").strip()
+            max_output_tokens = sanitize_max_output_tokens(body.get("maxOutputTokens"))
             speaker_slot = "second" if str(body.get("speakerSlot") or "") == "second" else "main"
             speaker = str(body.get("speaker") or ("ルヴィア" if body.get("twoPlayerMode") else "リノン")).strip()
             if model == "__codex_queue__":
@@ -2322,6 +2614,7 @@ class Handler(BaseHTTPRequestHandler):
                         "webContext": str(body.get("webContext") or "").strip(),
                         "webTopic": str(body.get("webTopic") or "").strip(),
                         "replyLength": reply_length,
+                        "maxOutputTokens": max_output_tokens,
                         "speechRate": speech_rate,
                         "emojiStyle": emoji_style,
                     }
@@ -2338,6 +2631,7 @@ class Handler(BaseHTTPRequestHandler):
                         "llmEmojiStyle": "",
                         "autoEmoji": False,
                         "replyLength": reply_length,
+                        "maxOutputTokens": max_output_tokens,
                         "speechRate": speech_rate,
                         "durationScale": duration_scale,
                         "audios": [],
@@ -2377,9 +2671,10 @@ class Handler(BaseHTTPRequestHandler):
             web_context = existing_web_context
             if use_web_search:
                 web_query_source = web_topic or user_text
+                web_search_limit = 1 if extract_web_urls(web_query_source) else 3
                 web_query = build_continuous_web_query(web_query_source, raw_messages)
                 try:
-                    search_results = web_search(web_query, limit=3)
+                    search_results = web_search(web_query, limit=web_search_limit)
                 except Exception as exc:
                     search_results = [{"title": "検索エラー", "url": "", "snippet": str(exc)}]
                 web_context = format_web_results(web_query, search_results)
@@ -2396,13 +2691,14 @@ class Handler(BaseHTTPRequestHandler):
                 )
             raw_messages.append({"role": "user", "content": user_text})
             messages, context_stats = compact_messages_for_context(raw_messages, context_limit)
-            reply, model_used, llm_emoji, chunk_limit = request_lmstudio(
+            reply, model_used, llm_emoji, chunk_limit, resolved_max_output_tokens = request_lmstudio(
                 messages,
                 model,
                 auto_emoji=auto_emoji,
                 reply_length=reply_length,
                 character_prompt=character_prompt,
                 user_address=user_address,
+                max_output_tokens=max_output_tokens,
                 no_dialogue=no_dialogue,
                 speaker=speaker,
                 two_only_mode=two_only_mode,
@@ -2445,6 +2741,7 @@ class Handler(BaseHTTPRequestHandler):
                     "speaker": speaker,
                     "model": model_used,
                     "replyLength": reply_length,
+                    "maxOutputTokens": resolved_max_output_tokens,
                     "speechRate": speech_rate,
                     "durationScale": duration_scale,
                     "emojiStyle": effective_emoji,
@@ -2494,6 +2791,7 @@ class Handler(BaseHTTPRequestHandler):
                     "llmEmojiStyle": llm_emoji,
                     "autoEmoji": auto_emoji,
                     "replyLength": reply_length,
+                    "maxOutputTokens": resolved_max_output_tokens,
                     "speechRate": speech_rate,
                     "durationScale": duration_scale,
                     "audios": audios,

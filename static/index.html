@@ -175,6 +175,12 @@
               <option value="ctrl-enter">Ctrl+Enter</option>
             </select>
           </label>
+          <h3>LM Studio</h3>
+          <label class="option-field">
+            <span>Max output tokens</span>
+            <input id="maxOutputTokens" type="number" min="0" max="4096" step="64" value="0" />
+            <small class="slot-description">0 = adaptive auto. Set a fixed cap for low VRAM.</small>
+          </label>
         </section>
         <section class="option-pane character-editor-pane">
           <h3>キャラクター編集</h3>
