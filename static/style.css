@@ -725,6 +725,17 @@ audio {
   min-width: 0;
 }
 
+.option-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.option-check input {
+  width: auto;
+  min-width: 0;
+}
+
 .library-actions,
 .expression-actions {
   display: flex;

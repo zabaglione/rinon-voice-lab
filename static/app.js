@@ -28,6 +28,7 @@ const maxOutputTokens = document.querySelector("#maxOutputTokens");
 const contextUsage = document.querySelector("#contextUsage");
 const autoEmoji = document.querySelector("#autoEmoji");
 const webSearch = document.querySelector("#webSearch");
+const externalSpeakEnabled = document.querySelector("#externalSpeakEnabled");
 const twoPlayerMode = document.querySelector("#twoPlayerMode");
 const twoOnlyMode = document.querySelector("#twoOnlyMode");
 const ttsBackendMode = document.querySelector("#ttsBackendMode");
@@ -102,6 +103,8 @@ let autoTurnSequence = 0;
 let autoNoDialogue = false;
 let externalSpeakLastId = 0;
 let externalSpeakPolling = false;
+let externalSpeakPollStarting = false;
+let externalSpeakPollTimer = null;
 let lastContextStats = null;
 let audioContext = null;
 let audioSource = null;
@@ -953,6 +956,7 @@ function sessionPayload() {
       secondTtsHost: secondTtsHost.value.trim(),
       autoEmoji: autoEmoji.checked,
       webSearch: webSearch.checked,
+      externalSpeakEnabled: externalSpeakEnabled.checked,
       twoPlayerMode: twoPlayerMode.checked,
       twoOnlyMode: twoOnlyMode.checked,
       emojiStyle: emojiStyleSelect.value,
@@ -1045,6 +1049,8 @@ function applySession(profile) {
   updateTtsBackendControls();
   autoEmoji.checked = Boolean(settings.autoEmoji ?? true);
   webSearch.checked = Boolean(settings.webSearch ?? false);
+  externalSpeakEnabled.checked = Boolean(settings.externalSpeakEnabled ?? false);
+  updateExternalSpeakPolling();
   twoPlayerMode.checked = Boolean(settings.twoPlayerMode ?? false);
   twoOnlyMode.checked = Boolean(settings.twoOnlyMode ?? false);
   refreshCharacterSelectors();
@@ -1162,6 +1168,7 @@ function handleExternalSpeakEvent(event) {
 }
 
 async function primeExternalSpeakEvents() {
+  if (!externalSpeakEnabled.checked) return;
   try {
     const res = await fetch("/api/speak-events?after=latest");
     const data = await res.json();
@@ -1174,6 +1181,7 @@ async function primeExternalSpeakEvents() {
 }
 
 async function pollExternalSpeakEvents() {
+  if (!externalSpeakEnabled.checked) return;
   if (externalSpeakPolling) return;
   externalSpeakPolling = true;
   try {
@@ -1190,6 +1198,35 @@ async function pollExternalSpeakEvents() {
     // Keep this quiet; normal chat should not be interrupted by a polling miss.
   } finally {
     externalSpeakPolling = false;
+  }
+}
+
+async function startExternalSpeakPolling() {
+  if (!externalSpeakEnabled.checked || externalSpeakPollTimer || externalSpeakPollStarting) return;
+  externalSpeakPollStarting = true;
+  try {
+    await primeExternalSpeakEvents();
+    if (!externalSpeakEnabled.checked || externalSpeakPollTimer) return;
+    externalSpeakPollTimer = window.setInterval(pollExternalSpeakEvents, 1500);
+  } finally {
+    externalSpeakPollStarting = false;
+  }
+}
+
+function stopExternalSpeakPolling() {
+  if (externalSpeakPollTimer) {
+    window.clearInterval(externalSpeakPollTimer);
+    externalSpeakPollTimer = null;
+  }
+  externalSpeakPolling = false;
+  externalSpeakPollStarting = false;
+}
+
+function updateExternalSpeakPolling() {
+  if (externalSpeakEnabled.checked) {
+    startExternalSpeakPolling();
+  } else {
+    stopExternalSpeakPolling();
   }
 }
 
@@ -1553,6 +1590,7 @@ function stopAutoConversation() {
 }
 
 autoEmoji.addEventListener("change", refreshEmojiInputs);
+externalSpeakEnabled.addEventListener("change", updateExternalSpeakPolling);
 twoPlayerMode.addEventListener("change", updateTwoPlayerMode);
 ttsBackendMode.addEventListener("change", updateTtsBackendControls);
 secondTtsHost.addEventListener("input", () => {
@@ -1714,8 +1752,7 @@ async function initialize() {
   await refreshStatus();
   await loadSession(true);
   updateTtsBackendControls();
-  await primeExternalSpeakEvents();
-  window.setInterval(pollExternalSpeakEvents, 1500);
+  updateExternalSpeakPolling();
 }
 
 initialize().catch((error) => {
