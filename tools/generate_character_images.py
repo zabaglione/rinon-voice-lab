@@ -16,7 +16,12 @@ from typing import Any
 APP_ROOT = Path(__file__).resolve().parents[1]
 CHARACTER_ROOT = APP_ROOT / "Character"
 OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations"
+GOOGLE_IMAGE_URL_TEMPLATE = "https://generativelanguage.googleapis.com/{api_version}/models/{model}:generateContent"
 DEFAULT_SD_WEBUI_URL = "http://127.0.0.1:7860"
+DEFAULT_GOOGLE_IMAGE_MODEL = os.environ.get(
+    "GEMINI_IMAGE_MODEL",
+    os.environ.get("GOOGLE_IMAGE_MODEL", "gemini-3.1-flash-image"),
+)
 
 COMMON_STYLE_PROMPT = (
     "anime visual novel character portrait, adult character, safe for work, "
@@ -120,9 +125,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=("openai", "sd-webui"),
+        choices=("openai", "sd-webui", "nano-banana", "google"),
         default="openai",
-        help="Image backend. Use sd-webui for a Stability Matrix Stable Diffusion WebUI package.",
+        help=(
+            "Image backend. Use nano-banana/google for Gemini image models, or "
+            "sd-webui for a Stability Matrix Stable Diffusion WebUI package."
+        ),
     )
     parser.add_argument(
         "--character",
@@ -179,6 +187,27 @@ def parse_args() -> argparse.Namespace:
         help="OpenAI image quality.",
     )
     parser.add_argument(
+        "--google-model",
+        default=DEFAULT_GOOGLE_IMAGE_MODEL,
+        help="Google Gemini image model.",
+    )
+    parser.add_argument(
+        "--google-api-version",
+        default=os.environ.get("GEMINI_API_VERSION", "v1"),
+        help="Google Gemini API version.",
+    )
+    parser.add_argument(
+        "--google-aspect-ratio",
+        default=os.environ.get("GEMINI_IMAGE_ASPECT_RATIO", ""),
+        help="Google image aspect ratio. Defaults to the ratio inferred from --size.",
+    )
+    parser.add_argument(
+        "--google-image-size",
+        choices=("1K", "2K", "4K"),
+        default=os.environ.get("GEMINI_IMAGE_SIZE", "1K"),
+        help="Google image size for Gemini 3 image models.",
+    )
+    parser.add_argument(
         "--sd-webui-url",
         default=os.environ.get("SD_WEBUI_URL", DEFAULT_SD_WEBUI_URL),
         help="Stable Diffusion WebUI base URL.",
@@ -213,6 +242,18 @@ def parse_size(value: str) -> tuple[int, int]:
     if width < 64 or height < 64:
         raise argparse.ArgumentTypeError("size is too small")
     return width, height
+
+
+def google_aspect_ratio_from_size(value: str) -> str:
+    width, height = parse_size(value)
+    divisor = gcd(width, height)
+    return f"{width // divisor}:{height // divisor}"
+
+
+def gcd(left: int, right: int) -> int:
+    while right:
+        left, right = right, left % right
+    return left
 
 
 def sanitize_id(value: str) -> str:
@@ -347,6 +388,66 @@ def generate_openai(prompt: str, args: argparse.Namespace) -> bytes:
     return decode_image_base64(str(b64_json))
 
 
+def google_api_key() -> str:
+    return os.environ.get("GEMINI_API_KEY", os.environ.get("GOOGLE_API_KEY", "")).strip()
+
+
+def normalize_google_model(value: str) -> str:
+    return str(value or "").strip().removeprefix("models/")
+
+
+def google_image_generation_config(args: argparse.Namespace) -> dict[str, Any]:
+    aspect_ratio = str(args.google_aspect_ratio or "").strip() or google_aspect_ratio_from_size(args.size)
+    image_config: dict[str, Any] = {"aspectRatio": aspect_ratio}
+    if not normalize_google_model(args.google_model).startswith("gemini-2.5-"):
+        image_config["imageSize"] = args.google_image_size
+    return {
+        "responseModalities": ["Image"],
+        "responseFormat": {"image": image_config},
+    }
+
+
+def extract_google_image_bytes(result: dict[str, Any]) -> bytes:
+    text_parts: list[str] = []
+    finish_reasons: list[str] = []
+    for candidate in result.get("candidates") or []:
+        if isinstance(candidate, dict):
+            finish_reason = candidate.get("finishReason")
+            if finish_reason:
+                finish_reasons.append(str(finish_reason))
+            content = candidate.get("content") if isinstance(candidate.get("content"), dict) else {}
+            for part in content.get("parts") or []:
+                if not isinstance(part, dict):
+                    continue
+                text = part.get("text")
+                if text:
+                    text_parts.append(str(text))
+                inline_data = part.get("inlineData") or part.get("inline_data")
+                if isinstance(inline_data, dict) and inline_data.get("data"):
+                    return decode_image_base64(str(inline_data["data"]))
+    detail = {
+        "finishReasons": finish_reasons,
+        "text": text_parts[:3],
+        "promptFeedback": result.get("promptFeedback"),
+    }
+    raise RuntimeError(f"Google response did not contain inline image data: {detail}")
+
+
+def generate_google(prompt: str, args: argparse.Namespace) -> bytes:
+    api_key = google_api_key()
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY or GOOGLE_API_KEY is not set.")
+    model = normalize_google_model(args.google_model)
+    api_version = str(args.google_api_version).strip().strip("/") or "v1"
+    url = GOOGLE_IMAGE_URL_TEMPLATE.format(api_version=api_version, model=model)
+    payload: dict[str, Any] = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": google_image_generation_config(args),
+    }
+    result = request_json(url, payload, {"x-goog-api-key": api_key}, args.timeout)
+    return extract_google_image_bytes(result)
+
+
 def generate_sd_webui(prompt: str, args: argparse.Namespace) -> bytes:
     width, height = parse_size(args.size)
     payload: dict[str, Any] = {
@@ -460,7 +561,17 @@ def write_metadata(path: Path, payload: dict[str, Any]) -> None:
 def generate_image(prompt: str, args: argparse.Namespace) -> bytes:
     if args.provider == "openai":
         return generate_openai(prompt, args)
+    if args.provider in {"nano-banana", "google"}:
+        return generate_google(prompt, args)
     return generate_sd_webui(prompt, args)
+
+
+def provider_model(args: argparse.Namespace) -> str | None:
+    if args.provider == "openai":
+        return args.openai_model
+    if args.provider in {"nano-banana", "google"}:
+        return normalize_google_model(args.google_model)
+    return None
 
 
 def main() -> int:
@@ -497,6 +608,7 @@ def main() -> int:
                     path,
                     {
                         "provider": args.provider,
+                        "model": provider_model(args),
                         "characterId": character_id,
                         "expression": expression,
                         "prompt": prompt,

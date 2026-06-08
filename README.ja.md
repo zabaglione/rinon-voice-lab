@@ -172,13 +172,29 @@ Irodori-TTS の依存関係は次のどちらかで入れてください。
 ```bash
 python3.10 -B tools/generate_character_images.py \
   --dry-run \
-  --provider openai \
+  --provider nano-banana \
   --character akari \
   --expression neutral \
   --expression happy
 ```
 
-OpenAI APIで生成する場合は `OPENAI_API_KEY` を設定します。生成結果は `Character\<character-id>\expressions\<expression>\` に保存されます。`--update-profiles` を付けると、`profile.json` と `profile.txt` の該当表情パスも更新します。`neutral` を更新した場合は `portrait` も更新されます。
+Google Nano Banana APIで生成する場合は `GEMINI_API_KEY` を設定します。標準モデルは `gemini-3.1-flash-image` です。生成結果は `Character\<character-id>\expressions\<expression>\` に保存されます。`--update-profiles` を付けると、`profile.json` と `profile.txt` の該当表情パスも更新します。`neutral` を更新した場合は `portrait` も更新されます。
+
+```bash
+export GEMINI_API_KEY="..."
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --google-model gemini-3.1-flash-image \
+  --google-image-size 1K \
+  --character akari \
+  --expression neutral \
+  --expression happy \
+  --update-profiles
+```
+
+より古い Nano Banana モデルを使う場合は、`--google-model gemini-2.5-flash-image` を指定します。高品質寄りの Nano Banana Pro を使う場合は、利用可能な環境で `--google-model gemini-3-pro-image` を指定します。
+
+OpenAI APIで生成する場合は `OPENAI_API_KEY` を設定します。
 
 ```bash
 export OPENAI_API_KEY="sk-..."

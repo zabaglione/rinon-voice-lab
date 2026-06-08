@@ -176,19 +176,32 @@ captions, reference audio, and expression images.
 ## Character Image Generation
 
 `tools/generate_character_images.py` can generate character expression images
-with either the OpenAI Image API or a Stable Diffusion WebUI-compatible local
-server launched from Stability Matrix. The script uses only the Python standard
-library.
+with the Google Nano Banana API, the OpenAI Image API, or a Stable Diffusion
+WebUI-compatible local server launched from Stability Matrix. The script uses
+only the Python standard library.
 
 Preview prompts and output paths without making API calls:
 
 ```bash
 python3.10 -B tools/generate_character_images.py \
   --dry-run \
-  --provider openai \
+  --provider nano-banana \
   --character akari \
   --expression neutral \
   --expression happy
+```
+
+Generate with Google Nano Banana:
+
+```bash
+export GEMINI_API_KEY="..."
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --google-model gemini-3.1-flash-image \
+  --google-image-size 1K \
+  --character akari \
+  --expression neutral \
+  --update-profiles
 ```
 
 Generate with OpenAI:
