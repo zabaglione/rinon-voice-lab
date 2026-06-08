@@ -71,6 +71,8 @@ const speaking = document.querySelector("#speaking");
 const secondSpeaking = document.querySelector("#secondSpeaking");
 const DEFAULT_MAIN_CHARACTER_NAME = "リノン";
 const DEFAULT_SECOND_CHARACTER_NAME = "ルヴィア";
+const DEFAULT_TTS_STEPS = 8;
+const DEFAULT_SPEECH_RATE = "fast";
 let mainCharacterName = DEFAULT_MAIN_CHARACTER_NAME;
 let secondCharacterName = DEFAULT_SECOND_CHARACTER_NAME;
 let mainReferencePath = "";
@@ -89,6 +91,8 @@ let autoPending = false;
 let autoNextSpeaker = mainCharacterName;
 let playbackSpeaker = mainCharacterName;
 let playbackTurnId = "";
+let playbackAudioStreamId = "";
+let waitingForChatAudioStreamId = "";
 let lastAssistantSpeaker = "";
 let lastAssistantText = "";
 let autoTopic = "";
@@ -105,6 +109,10 @@ let externalSpeakLastId = 0;
 let externalSpeakPolling = false;
 let externalSpeakPollStarting = false;
 let externalSpeakPollTimer = null;
+let chatAudioLastId = 0;
+let chatAudioPolling = false;
+let chatAudioPollTimer = null;
+const activeChatAudioStreams = new Map();
 let lastContextStats = null;
 let audioContext = null;
 let audioSource = null;
@@ -378,6 +386,15 @@ function nextAutoTurnId(speaker) {
   return `auto-${autoRunId}-${autoTurnSequence}-${safeSpeaker}`;
 }
 
+function autoTurnOrderFromId(turnId) {
+  const match = /^auto-\d+-(\d+)-/.exec(String(turnId || ""));
+  return match ? Number(match[1]) || 0 : 0;
+}
+
+function autoTurnOrderForItem(item) {
+  return Number(item?.autoTurnOrder || 0) || autoTurnOrderFromId(item?.autoTurnId);
+}
+
 function queuedFutureAutoTurnCount() {
   const ids = new Set();
   for (const item of queue) {
@@ -438,6 +455,19 @@ function dropQueuedFutureAutoTurns() {
     }
     return false;
   });
+  for (const [streamId, stream] of activeChatAudioStreams) {
+    if (!stream.autoTurnId || stream.autoTurnId === playbackTurnId) continue;
+    if (stream.autoHistoryEntry) {
+      removedHistoryEntries.add(stream.autoHistoryEntry);
+    }
+    activeChatAudioStreams.delete(streamId);
+  }
+  if (activeChatAudioStreams.size === 0) {
+    stopChatAudioEventPolling();
+  }
+  if (waitingForChatAudioStreamId && !activeChatAudioStreams.has(waitingForChatAudioStreamId)) {
+    waitingForChatAudioStreamId = "";
+  }
   removeHistoryEntries(removedHistoryEntries);
   syncLastAssistantFromHistory();
 }
@@ -447,7 +477,7 @@ function currentEmojiStyle() {
 }
 
 function setSpeechRate(value) {
-  const nextValue = value === "fast" ? "fast" : "normal";
+  const nextValue = value === "normal" ? "normal" : DEFAULT_SPEECH_RATE;
   speechRate.value = nextValue;
   for (const button of speechRateButtons) {
     const active = button.dataset.rate === nextValue;
@@ -948,7 +978,7 @@ function sessionPayload() {
       contextLimit: Number(contextLimit.value || 8200),
       maxOutputTokens: Number(maxOutputTokens.value || 0),
       model: modelSelect.value,
-      steps: Number(stepsInput.value || 12),
+      steps: Number(stepsInput.value || DEFAULT_TTS_STEPS),
       speechRate: speechRate.value,
       replyLength: replyLength.value,
       sendShortcut: normalizeSendShortcut(sendShortcut.value),
@@ -993,7 +1023,11 @@ function clearContext() {
   history.length = 0;
   messagesEl.innerHTML = "";
   queue = [];
+  activeChatAudioStreams.clear();
+  stopChatAudioEventPolling();
   playbackTurnId = "";
+  playbackAudioStreamId = "";
+  waitingForChatAudioStreamId = "";
   player.pause();
   player.removeAttribute("src");
   player.load();
@@ -1038,8 +1072,8 @@ function applySession(profile) {
   }
   updateContextUsage();
   setSelectValue(modelSelect, settings.model);
-  if (settings.steps) stepsInput.value = settings.steps;
-  setSpeechRate(settings.speechRate);
+  stepsInput.value = settings.steps || DEFAULT_TTS_STEPS;
+  setSpeechRate(settings.speechRate || DEFAULT_SPEECH_RATE);
   if (settings.replyLength) replyLength.value = settings.replyLength;
   sendShortcut.value = normalizeSendShortcut(settings.sendShortcut);
   ttsBackendMode.value = settings.ttsBackendMode === "remote" ? "remote" : "local";
@@ -1087,10 +1121,63 @@ async function loadSession(silent = false) {
   applySession(data);
 }
 
+function isAudioActive() {
+  return Boolean(player.currentSrc) && !player.paused && !player.ended;
+}
+
+function hasActiveChatAudioForStream(streamId) {
+  const stream = activeChatAudioStreams.get(streamId || "");
+  return Boolean(stream && chatAudioStreamStillValid(stream));
+}
+
+function shouldWaitForChatAudioContinuation() {
+  if (!playbackAudioStreamId || !hasActiveChatAudioForStream(playbackAudioStreamId)) return false;
+  const next = queue[0];
+  return !next || next.audioStreamId !== playbackAudioStreamId;
+}
+
+function queueChatAudioItems(items, speaker, stream) {
+  const nextItems = [...items].map((item) => ({
+    ...item,
+    speaker,
+    audioStreamId: stream.streamId || item.audioStreamId || "",
+    autoTurnOrder: stream.autoTurnOrder || item.autoTurnOrder || 0,
+  }));
+  if (!nextItems.length) return;
+  const streamId = stream.streamId || "";
+  const turnId = stream.autoTurnId || "";
+
+  let insertIndex = -1;
+  for (let index = queue.length - 1; index >= 0; index -= 1) {
+    if ((turnId && queue[index].autoTurnId === turnId) || (!turnId && queue[index].audioStreamId === streamId)) {
+      insertIndex = index + 1;
+      break;
+    }
+  }
+  if (insertIndex < 0 && playbackAudioStreamId === streamId) {
+    insertIndex = 0;
+  }
+  if (insertIndex < 0 && turnId) {
+    const turnOrder = stream.autoTurnOrder || autoTurnOrderFromId(turnId);
+    insertIndex = queue.findIndex((item) => item.autoTurnId && autoTurnOrderForItem(item) > turnOrder);
+  }
+  if (insertIndex < 0) insertIndex = queue.length;
+  queue.splice(insertIndex, 0, ...nextItems);
+  if (!isAudioActive()) {
+    playNext();
+  }
+}
+
+function resumeAfterChatAudioDone(streamId) {
+  if (!streamId || waitingForChatAudioStreamId !== streamId || isAudioActive()) return;
+  if (hasActiveChatAudioForStream(streamId)) return;
+  waitingForChatAudioStreamId = "";
+  playNext();
+}
+
 function playQueue(items, speaker = activeStage().speaker, options = {}) {
   const nextItems = [...items].map((item) => ({ ...item, speaker }));
-  const isAudioActive = Boolean(player.currentSrc) && !player.paused && !player.ended;
-  if (options.append && isAudioActive) {
+  if (options.append && isAudioActive()) {
     queue.push(...nextItems);
     return;
   }
@@ -1105,9 +1192,17 @@ function playQueue(items, speaker = activeStage().speaker, options = {}) {
 }
 
 function playNext() {
+  if (shouldWaitForChatAudioContinuation()) {
+    waitingForChatAudioStreamId = playbackAudioStreamId;
+    setStageStatus("buffering", playbackSpeaker);
+    setSpeakingState(false, playbackSpeaker);
+    return;
+  }
+  waitingForChatAudioStreamId = "";
   const next = queue.shift();
   if (!next) {
     playbackTurnId = "";
+    playbackAudioStreamId = "";
     speaking.textContent = "ready";
     secondSpeaking.textContent = "standby";
     setSpeakingState(false);
@@ -1119,6 +1214,7 @@ function playNext() {
   }
   playbackSpeaker = next.speaker || playbackSpeaker;
   playbackTurnId = next.autoTurnId || "";
+  playbackAudioStreamId = next.audioStreamId || "";
   updateAudioPan(playbackSpeaker);
   if (next.deferredMessage) {
     addMessage("assistant", next.deferredMessage.reply, next.deferredMessage.meta);
@@ -1227,6 +1323,81 @@ function updateExternalSpeakPolling() {
     startExternalSpeakPolling();
   } else {
     stopExternalSpeakPolling();
+  }
+}
+
+function registerChatAudioStream(data, stream) {
+  const streamId = String(data.audioStreamId || "");
+  if (!streamId || data.audioComplete) return;
+  chatAudioLastId = Math.max(chatAudioLastId, Number(data.audioEventAfter || 0));
+  activeChatAudioStreams.set(streamId, { ...stream, streamId });
+  startChatAudioEventPolling();
+}
+
+function startChatAudioEventPolling() {
+  if (chatAudioPollTimer || activeChatAudioStreams.size === 0) return;
+  chatAudioPollTimer = window.setInterval(pollChatAudioEvents, 500);
+  pollChatAudioEvents();
+}
+
+function stopChatAudioEventPolling() {
+  if (chatAudioPollTimer) {
+    window.clearInterval(chatAudioPollTimer);
+    chatAudioPollTimer = null;
+  }
+  chatAudioPolling = false;
+}
+
+function chatAudioStreamStillValid(stream) {
+  if (!stream?.isAuto) return true;
+  return autoMode && stream.autoRunId === autoRunId && stream.autoRevision === autoPrefetchRevision;
+}
+
+async function pollChatAudioEvents() {
+  if (chatAudioPolling || activeChatAudioStreams.size === 0) return;
+  chatAudioPolling = true;
+  try {
+    const res = await fetch(`/api/chat-audio-events?after=${chatAudioLastId}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    for (const event of Array.isArray(data.events) ? data.events : []) {
+      chatAudioLastId = Math.max(chatAudioLastId, Number(event.id || 0));
+      const streamId = String(event.streamId || "");
+      const stream = activeChatAudioStreams.get(streamId);
+      if (!stream) continue;
+      if (!chatAudioStreamStillValid(stream)) {
+        activeChatAudioStreams.delete(streamId);
+        continue;
+      }
+      if (event.error) {
+        addMessage("assistant", `Audio error: ${event.error}`);
+        activeChatAudioStreams.delete(streamId);
+        resumeAfterChatAudioDone(streamId);
+        continue;
+      }
+      const audios = (Array.isArray(event.audios) ? event.audios : []).map((item) => ({
+        ...item,
+        audioStreamId: streamId,
+        autoTurnId: stream.autoTurnId || "",
+        autoTurnOrder: stream.autoTurnOrder || 0,
+        autoHistoryEntry: stream.autoHistoryEntry || null,
+      }));
+      if (audios.length) {
+        queueChatAudioItems(audios, stream.speaker, stream);
+      }
+      if (event.done) {
+        activeChatAudioStreams.delete(streamId);
+        resumeAfterChatAudioDone(streamId);
+      }
+    }
+    chatAudioLastId = Math.max(chatAudioLastId, Number(data.latestId || 0));
+  } catch {
+    // Keep playback on already received audio; the next poll can recover if the server is still running.
+  } finally {
+    chatAudioPolling = false;
+    if (activeChatAudioStreams.size === 0) {
+      stopChatAudioEventPolling();
+    }
   }
 }
 
@@ -1353,7 +1524,7 @@ async function sendChatTurn({
         message: text,
         history: historyBeforeSend,
         model: modelSelect.value,
-        steps: Number(stepsInput.value || 12),
+        steps: Number(stepsInput.value || DEFAULT_TTS_STEPS),
         speechRate: speechRate.value,
         replyLength: replyLength.value,
         speaker: stage.speaker,
@@ -1394,7 +1565,14 @@ async function sendChatTurn({
       autoWebResults = data.webResults || [];
     }
     let responseAudios = Array.isArray(data.audios) ? data.audios.map((item) => ({ ...item })) : [];
+    if (data.audioStreamId) {
+      responseAudios = responseAudios.map((item) => ({ ...item, audioStreamId: data.audioStreamId }));
+    }
     const timing = responseAudios.map((item) => `${item.elapsed}s`).join(", ");
+    const timingMeta =
+      data.audioComplete === false && data.remainingAudioCount
+        ? `${timing}${timing ? ", " : ""}+${data.remainingAudioCount}`
+        : timing;
     const style = data.emojiStyle
       ? ` / ${data.autoEmoji && data.llmEmojiStyle ? "auto style" : "style"} ${data.emojiStyle}`
       : "";
@@ -1405,7 +1583,7 @@ async function sendChatTurn({
       : "";
     const paceMeta = data.speechRate === "fast" ? " / pace fast" : "";
     const outputMeta = data.maxOutputTokens ? ` / out ${data.maxOutputTokens}` : "";
-    const assistantMeta = `${data.speaker || mainCharacterName} / ${data.model} / ${data.replyLength}${outputMeta}${style}${webMeta}${paceMeta} / pose ${data.expression} / tts ${timing}`;
+    const assistantMeta = `${data.speaker || mainCharacterName} / ${data.model} / ${data.replyLength}${outputMeta}${style}${webMeta}${paceMeta} / pose ${data.expression} / tts ${timingMeta}`;
     const historyEntry = { role: "assistant", content: `${data.speaker || speaker}: ${data.reply}` };
     if (!backgroundAuto) {
       addMessage("assistant", data.reply, assistantMeta);
@@ -1419,17 +1597,30 @@ async function sendChatTurn({
       };
     }
     history.push(historyEntry);
+    let autoTurnId = "";
+    let autoTurnOrder = 0;
     if (isAuto && responseAudios.length) {
-      const autoTurnId = nextAutoTurnId(data.speaker || speaker);
+      autoTurnId = nextAutoTurnId(data.speaker || speaker);
+      autoTurnOrder = autoTurnSequence;
       responseAudios = responseAudios.map((item) => ({
         ...item,
         autoTurnId,
+        autoTurnOrder,
         autoHistoryEntry: historyEntry,
       }));
     }
     lastAssistantSpeaker = data.speaker || speaker;
     lastAssistantText = data.reply;
     updateContextUsage();
+    registerChatAudioStream(data, {
+      speaker: data.speaker || speaker,
+      isAuto,
+      autoRunId: autoRunIdAtStart,
+      autoRevision: autoRevisionAtStart,
+      autoTurnId,
+      autoTurnOrder,
+      autoHistoryEntry: historyEntry,
+    });
     if (responseAudios.length) {
       playQueue(responseAudios, data.speaker || speaker, { append: backgroundAuto });
     } else {

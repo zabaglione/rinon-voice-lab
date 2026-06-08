@@ -47,6 +47,8 @@ DEFAULT_MODEL = os.environ.get("LM_STUDIO_MODEL", "gemma-4-12b-it")
 DEFAULT_CONTEXT_LIMIT = int(os.environ.get("LM_STUDIO_CONTEXT_LIMIT", "8200"))
 DEFAULT_MAX_OUTPUT_TOKENS = int(os.environ.get("LM_STUDIO_MAX_OUTPUT_TOKENS", "0"))
 MAX_OUTPUT_TOKENS_LIMIT = int(os.environ.get("LM_STUDIO_MAX_OUTPUT_TOKENS_LIMIT", "4096"))
+DEFAULT_TTS_STEPS = int(os.environ.get("IRODORI_TTS_STEPS", "8"))
+DEFAULT_SPEECH_RATE = os.environ.get("IRODORI_SPEECH_RATE", "fast").strip().lower() or "fast"
 LM_COMPACT_CONTEXT_LIMIT = int(os.environ.get("LM_COMPACT_CONTEXT_LIMIT", "4200"))
 LM_RECENT_MESSAGE_COUNT = int(os.environ.get("LM_RECENT_MESSAGE_COUNT", "12"))
 LM_SUMMARY_CHAR_LIMIT = int(os.environ.get("LM_SUMMARY_CHAR_LIMIT", "1400"))
@@ -114,6 +116,9 @@ Luvia_remote_ref_cache: dict[str, str] = {}
 External_speak_lock = threading.Lock()
 External_speak_events = deque(maxlen=80)
 External_speak_next_id = 0
+Chat_audio_lock = threading.Lock()
+Chat_audio_events = deque(maxlen=240)
+Chat_audio_next_id = 0
 Codex_inbox_lock = threading.Lock()
 Codex_inbox = deque(maxlen=120)
 Codex_inbox_next_id = 0
@@ -814,8 +819,8 @@ def save_session_profile(payload: dict) -> dict:
             "contextLimit": int(settings.get("contextLimit") or DEFAULT_CONTEXT_LIMIT),
             "maxOutputTokens": sanitize_max_output_tokens(settings.get("maxOutputTokens")),
             "model": str(settings.get("model") or DEFAULT_MODEL),
-            "steps": int(settings.get("steps") or 12),
-            "speechRate": str(settings.get("speechRate") or "normal"),
+            "steps": int(settings.get("steps") or DEFAULT_TTS_STEPS),
+            "speechRate": str(settings.get("speechRate") or DEFAULT_SPEECH_RATE),
             "replyLength": str(settings.get("replyLength") or "normal"),
             "sendShortcut": str(settings.get("sendShortcut") or "enter"),
             "ttsBackendMode": str(settings.get("ttsBackendMode") or "local"),
@@ -2706,6 +2711,79 @@ def external_speak_events_after(after_id: int) -> list[dict]:
         return [event for event in External_speak_events if int(event.get("id") or 0) > after_id]
 
 
+def current_chat_audio_event_id() -> int:
+    with Chat_audio_lock:
+        return Chat_audio_next_id
+
+
+def next_chat_audio_event_id() -> int:
+    global Chat_audio_next_id
+    with Chat_audio_lock:
+        Chat_audio_next_id += 1
+        return Chat_audio_next_id
+
+
+def publish_chat_audio_event(event: dict) -> dict:
+    event["id"] = next_chat_audio_event_id()
+    event["createdAt"] = time.time()
+    with Chat_audio_lock:
+        Chat_audio_events.append(event)
+    return event
+
+
+def chat_audio_events_after(after_id: int) -> list[dict]:
+    with Chat_audio_lock:
+        return [event for event in Chat_audio_events if int(event.get("id") or 0) > after_id]
+
+
+def start_chat_audio_worker(
+    stream_id: str,
+    chunks: list[str],
+    start_index: int,
+    synthesize,
+    steps: int,
+    emoji_style: str,
+    caption: str,
+    duration_scale: float,
+    synthesize_kwargs: dict,
+    speaker: str,
+) -> None:
+    def worker() -> None:
+        for index, chunk in enumerate(chunks, start=start_index):
+            try:
+                audio = synthesize(
+                    chunk,
+                    index,
+                    steps=steps,
+                    emoji_style=emoji_style,
+                    caption=caption,
+                    duration_scale=duration_scale,
+                    **synthesize_kwargs,
+                )
+            except Exception as exc:
+                publish_chat_audio_event(
+                    {
+                        "streamId": stream_id,
+                        "speaker": speaker,
+                        "done": True,
+                        "error": str(exc),
+                    }
+                )
+                return
+            publish_chat_audio_event(
+                {
+                    "streamId": stream_id,
+                    "speaker": speaker,
+                    "done": False,
+                    "index": index,
+                    "audios": [audio],
+                }
+            )
+        publish_chat_audio_event({"streamId": stream_id, "speaker": speaker, "done": True, "audios": []})
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def handle_external_speak(payload: dict) -> dict:
     text = str(payload.get("text") or payload.get("message") or "").strip()
     if not text:
@@ -2715,8 +2793,8 @@ def handle_external_speak(payload: dict) -> dict:
     speaker = str(payload.get("speaker") or ("ルヴィア" if use_second_speaker else "リノン")).strip()
     emoji_style = str(payload.get("emoji") or payload.get("emojiStyle") or "").strip()
     caption = str(payload.get("caption") or payload.get("ttsCaption") or IRODORI_CAPTION).strip()
-    steps = max(1, min(120, int(payload.get("steps") or 12)))
-    speech_rate = str(payload.get("speechRate") or "normal").strip().lower()
+    steps = max(1, min(120, int(payload.get("steps") or DEFAULT_TTS_STEPS)))
+    speech_rate = str(payload.get("speechRate") or DEFAULT_SPEECH_RATE).strip().lower()
     duration_scale = float(payload.get("durationScale") or tts_duration_scale_for_rate(speech_rate))
     chunk_limit = max(1, min(20, int(payload.get("chunkLimit") or 8)))
     reference_path = sanitize_reference_path(
@@ -2873,6 +2951,32 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 after_id = 0
             events = external_speak_events_after(after_id)
+            self.send_json(
+                200,
+                {
+                    "events": events,
+                    "latestId": events[-1]["id"] if events else after_id,
+                },
+            )
+            return
+
+        if parsed.path == "/api/chat-audio-events":
+            query = parse_qs(parsed.query)
+            after_raw = (query.get("after") or ["0"])[0]
+            if str(after_raw).lower() == "latest":
+                self.send_json(
+                    200,
+                    {
+                        "events": [],
+                        "latestId": current_chat_audio_event_id(),
+                    },
+                )
+                return
+            try:
+                after_id = int(after_raw or 0)
+            except ValueError:
+                after_id = 0
+            events = chat_audio_events_after(after_id)
             self.send_json(
                 200,
                 {
@@ -3044,8 +3148,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             history = body.get("history") if isinstance(body.get("history"), list) else []
             model = str(body.get("model") or "").strip() or None
-            steps = int(body.get("steps") or 12)
-            speech_rate = str(body.get("speechRate") or "normal").strip().lower()
+            steps = int(body.get("steps") or DEFAULT_TTS_STEPS)
+            speech_rate = str(body.get("speechRate") or DEFAULT_SPEECH_RATE).strip().lower()
             duration_scale = tts_duration_scale_for_rate(speech_rate)
             emoji_style = str(body.get("emojiStyle") or "").strip()
             auto_emoji = bool(body.get("autoEmoji", True))
@@ -3185,22 +3289,43 @@ class Handler(BaseHTTPRequestHandler):
                 else (LUVIA_REMOTE_REF_WAV if use_remote_tts else "")
             )
             synthesize = synthesize_sentence_remote_luvia if use_remote_tts else synthesize_sentence
-            audios = [
-                synthesize(
-                    chunk,
-                    i,
-                    steps=max(1, min(120, steps)),
-                    emoji_style=effective_emoji,
-                    caption=tts_caption,
-                    duration_scale=duration_scale,
-                    **(
-                        {"remote_ref_wav": remote_reference_wav, "remote_tts_url": second_tts_url}
-                        if use_remote_tts
-                        else {"ref_wav": reference_wav}
-                    ),
+            tts_steps = max(1, min(120, steps))
+            synthesize_kwargs = (
+                {"remote_ref_wav": remote_reference_wav, "remote_tts_url": second_tts_url}
+                if use_remote_tts
+                else {"ref_wav": reference_wav}
+            )
+            audios = []
+            audio_stream_id = ""
+            audio_complete = True
+            audio_event_after = current_chat_audio_event_id()
+            if chunks:
+                audios.append(
+                    synthesize(
+                        chunks[0],
+                        1,
+                        steps=tts_steps,
+                        emoji_style=effective_emoji,
+                        caption=tts_caption,
+                        duration_scale=duration_scale,
+                        **synthesize_kwargs,
+                    )
                 )
-                for i, chunk in enumerate(chunks, start=1)
-            ]
+                if len(chunks) > 1:
+                    audio_stream_id = f"chat_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+                    audio_complete = False
+                    start_chat_audio_worker(
+                        audio_stream_id,
+                        chunks[1:],
+                        2,
+                        synthesize,
+                        tts_steps,
+                        effective_emoji,
+                        tts_caption,
+                        duration_scale,
+                        synthesize_kwargs,
+                        speaker,
+                    )
             append_chat_log(
                 {
                     "time": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -3244,6 +3369,8 @@ class Handler(BaseHTTPRequestHandler):
                         }
                         for item in audios
                     ],
+                    "audioStreamId": audio_stream_id,
+                    "audioComplete": audio_complete,
                     "contextStats": context_stats,
                 }
             )
@@ -3263,6 +3390,10 @@ class Handler(BaseHTTPRequestHandler):
                     "speechRate": speech_rate,
                     "durationScale": duration_scale,
                     "audios": audios,
+                    "audioStreamId": audio_stream_id,
+                    "audioComplete": audio_complete,
+                    "audioEventAfter": audio_event_after,
+                    "remainingAudioCount": max(0, len(chunks) - len(audios)),
                     "contextStats": context_stats,
                     "webSearch": use_web_search,
                     "twoOnlyMode": two_only_mode,
