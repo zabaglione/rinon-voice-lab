@@ -426,6 +426,10 @@ def copy_character_asset(character_id: str, expression: str, url: str) -> str:
     text = str(url or "").strip()
     if text.startswith(f"/Character/{character_id}/"):
         return text
+    if text.startswith("/Character/"):
+        src = local_path_for_asset_url(text)
+        if src and src.exists() and src.suffix.lower() in ALLOWED_IMAGE_EXTENSIONS:
+            return text
     src = local_path_for_asset_url(text)
     if not src or not src.exists() or src.suffix.lower() not in ALLOWED_IMAGE_EXTENSIONS:
         return text
@@ -445,6 +449,10 @@ def copy_character_reference(character_id: str, reference_path: str) -> str:
     raw = str(reference_path or "").strip()
     if not raw:
         return raw
+    if raw.startswith("/Character/"):
+        src_url = local_path_for_asset_url(raw)
+        if src_url and src_url.exists() and src_url.suffix.lower() in ALLOWED_REFERENCE_EXTENSIONS:
+            return raw
     src = Path(raw)
     char_dir = (CHARACTER_ROOT / character_id).resolve()
     if not src.is_absolute():
@@ -862,7 +870,11 @@ def sanitize_reference_path(value: object, fallback: Path) -> Path:
     raw = str(value or "").strip()
     if not raw:
         return fallback
-    candidate = Path(raw)
+    shared = local_path_for_asset_url(raw) if raw.startswith(("/Character/", "/characters/")) else None
+    if shared:
+        candidate = shared.resolve()
+    else:
+        candidate = Path(raw)
     if not candidate.is_absolute():
         candidate = (APP_ROOT / candidate).resolve()
     else:
