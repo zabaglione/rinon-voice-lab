@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -155,6 +156,25 @@ def parse_args() -> argparse.Namespace:
         help="Generate every expression listed in each selected character profile.",
     )
     parser.add_argument(
+        "--exclude-expression",
+        action="append",
+        default=[],
+        help="Expression key to skip. Repeat for multiple expressions.",
+    )
+    parser.add_argument(
+        "--reference-expression",
+        default="",
+        help=(
+            "Use an existing generated image for this expression as an identity reference. "
+            "Supported by nano-banana/google."
+        ),
+    )
+    parser.add_argument(
+        "--skip-reference-expression",
+        action="store_true",
+        help="Do not generate the expression named by --reference-expression.",
+    )
+    parser.add_argument(
         "--variant-count",
         type=int,
         default=1,
@@ -235,6 +255,10 @@ def parse_args() -> argparse.Namespace:
         parse_size(args.size)
     except argparse.ArgumentTypeError as exc:
         parser.error(str(exc))
+    if args.skip_reference_expression and not args.reference_expression:
+        parser.error("--skip-reference-expression requires --reference-expression.")
+    if args.reference_expression and args.provider not in {"nano-banana", "google"}:
+        parser.error("--reference-expression currently requires --provider nano-banana or google.")
     return args
 
 
@@ -300,10 +324,17 @@ def selected_expressions(args: argparse.Namespace, profile: dict[str, Any]) -> l
     if args.all_profile_expressions:
         expressions = profile.get("expressions")
         if isinstance(expressions, dict) and expressions:
-            return sorted(sanitize_expression(key) for key in expressions)
-    if args.expression:
-        return [sanitize_expression(value) for value in args.expression]
-    return ["neutral"]
+            selected = sorted(sanitize_expression(key) for key in expressions)
+        else:
+            selected = ["neutral"]
+    elif args.expression:
+        selected = [sanitize_expression(value) for value in args.expression]
+    else:
+        selected = ["neutral"]
+    excluded = {sanitize_expression(value) for value in args.exclude_expression}
+    if args.skip_reference_expression and args.reference_expression:
+        excluded.add(sanitize_expression(args.reference_expression))
+    return [expression for expression in selected if expression not in excluded]
 
 
 def character_design(character_id: str, profile: dict[str, Any]) -> str:
@@ -331,6 +362,30 @@ def build_prompt(profile: dict[str, Any], expression: str) -> str:
     )
 
 
+def build_reference_prompt(profile: dict[str, Any], expression: str, reference_expression: str) -> str:
+    character_id = sanitize_id(str(profile.get("id") or "character"))
+    return " ".join(
+        [
+            "Use the attached image as the exact identity reference for this character.",
+            (
+                "Keep the same face shape, hairstyle, hair color, eye color, outfit, headset, "
+                "camera angle, bust-shot framing, background, line art, shading, and lighting."
+            ),
+            (
+                "Change only the facial expression and small natural acting details needed for "
+                f"{expression_prompt(expression)}."
+            ),
+            (
+                "Do not redesign the character, do not change age, gender presentation, body type, "
+                "hair, clothing, accessories, pose framing, or art style."
+            ),
+            f"Reference expression is {reference_expression}.",
+            COMMON_STYLE_PROMPT + ".",
+            character_design(character_id, profile) + ".",
+        ]
+    )
+
+
 def output_path(character_id: str, expression: str, variant_count: int, variant_index: int) -> Path:
     out_dir = CHARACTER_ROOT / character_id / "expressions" / expression
     suffix = "" if variant_count == 1 else f"_{variant_index:02d}"
@@ -339,6 +394,52 @@ def output_path(character_id: str, expression: str, variant_count: int, variant_
 
 def character_url(character_id: str, expression: str, path: Path) -> str:
     return f"/Character/{character_id}/expressions/{expression}/{path.name}"
+
+
+def local_path_for_character_url(url: str) -> Path | None:
+    text = str(url or "").strip()
+    if not text.startswith("/Character/"):
+        return None
+    rel = Path(text.removeprefix("/Character/"))
+    return (CHARACTER_ROOT / rel).resolve()
+
+
+def first_profile_expression_path(
+    character_id: str,
+    profile: dict[str, Any],
+    expression: str,
+) -> Path | None:
+    expressions = profile.get("expressions")
+    if not isinstance(expressions, dict):
+        return None
+    values = expressions.get(expression) or []
+    raw_values = values if isinstance(values, list) else [values]
+    for value in raw_values:
+        text = str(value or "").strip()
+        if not text.startswith(f"/Character/{character_id}/"):
+            continue
+        path = local_path_for_character_url(text)
+        if path and path.exists():
+            return path
+    return None
+
+
+def reference_image_path(
+    character_id: str,
+    profile: dict[str, Any],
+    reference_expression: str,
+) -> Path:
+    expression = sanitize_expression(reference_expression)
+    profile_path = first_profile_expression_path(character_id, profile, expression)
+    if profile_path:
+        return profile_path
+    generated_path = output_path(character_id, expression, 1, 1)
+    if generated_path.exists():
+        return generated_path
+    raise RuntimeError(
+        "Reference image not found. Generate the reference expression first: "
+        f"Character/{character_id}/expressions/{expression}/{character_id}_{expression}_generated.png"
+    )
 
 
 def request_json(url: str, payload: dict[str, Any], headers: dict[str, str], timeout: int) -> dict[str, Any]:
@@ -365,6 +466,14 @@ def decode_image_base64(value: str) -> bytes:
     if "," in raw and raw.startswith("data:"):
         raw = raw.split(",", 1)[1]
     return base64.b64decode(raw)
+
+
+def encode_inline_image(path: Path) -> dict[str, str]:
+    mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+    return {
+        "mime_type": mime_type,
+        "data": base64.b64encode(path.read_bytes()).decode("ascii"),
+    }
 
 
 def generate_openai(prompt: str, args: argparse.Namespace) -> bytes:
@@ -438,14 +547,21 @@ def extract_google_image_bytes(result: dict[str, Any]) -> bytes:
     raise RuntimeError(f"Google response did not contain inline image data: {detail}")
 
 
-def generate_google(prompt: str, args: argparse.Namespace) -> bytes:
+def google_content_parts(prompt: str, reference_path: Path | None) -> list[dict[str, Any]]:
+    parts: list[dict[str, Any]] = [{"text": prompt}]
+    if reference_path:
+        parts.append({"inline_data": encode_inline_image(reference_path)})
+    return parts
+
+
+def generate_google(prompt: str, args: argparse.Namespace, reference_path: Path | None = None) -> bytes:
     api_key = google_api_key()
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY or GOOGLE_API_KEY is not set.")
     model = normalize_google_model(args.google_model)
     api_version = str(args.google_api_version).strip().strip("/") or "v1"
     url = GOOGLE_IMAGE_URL_TEMPLATE.format(api_version=api_version, model=model)
-    payload: dict[str, Any] = {"contents": [{"parts": [{"text": prompt}]}]}
+    payload: dict[str, Any] = {"contents": [{"parts": google_content_parts(prompt, reference_path)}]}
     if args.google_send_generation_config:
         payload["generationConfig"] = google_image_generation_config(args)
     result = request_json(url, payload, {"x-goog-api-key": api_key}, args.timeout)
@@ -562,11 +678,13 @@ def write_metadata(path: Path, payload: dict[str, Any]) -> None:
     )
 
 
-def generate_image(prompt: str, args: argparse.Namespace) -> bytes:
+def generate_image(prompt: str, args: argparse.Namespace, reference_path: Path | None = None) -> bytes:
+    if reference_path and args.provider not in {"nano-banana", "google"}:
+        raise RuntimeError("--reference-expression is currently supported only by nano-banana/google.")
     if args.provider == "openai":
         return generate_openai(prompt, args)
     if args.provider in {"nano-banana", "google"}:
-        return generate_google(prompt, args)
+        return generate_google(prompt, args, reference_path)
     return generate_sd_webui(prompt, args)
 
 
@@ -591,7 +709,13 @@ def main() -> int:
             print("Skipping profile without character id.", file=sys.stderr)
             continue
         for expression in selected_expressions(args, profile):
-            prompt = build_prompt(profile, expression)
+            reference_expression = sanitize_expression(args.reference_expression) if args.reference_expression else ""
+            ref_path = None
+            if reference_expression and expression != reference_expression:
+                ref_path = reference_image_path(character_id, profile, reference_expression)
+                prompt = build_reference_prompt(profile, expression, reference_expression)
+            else:
+                prompt = build_prompt(profile, expression)
             generated_urls: list[str] = []
             for variant_index in range(1, args.variant_count + 1):
                 path = output_path(character_id, expression, args.variant_count, variant_index)
@@ -601,12 +725,14 @@ def main() -> int:
                     generated_urls.append(url)
                     continue
                 print(f"target: {path.relative_to(APP_ROOT)}")
+                if ref_path:
+                    print(f"reference: {ref_path.relative_to(APP_ROOT)}")
                 print(f"prompt: {prompt}")
                 if args.dry_run:
                     generated_urls.append(url)
                     continue
                 started = time.time()
-                image_bytes = generate_image(prompt, args)
+                image_bytes = generate_image(prompt, args, ref_path)
                 atomic_write_bytes(path, image_bytes)
                 write_metadata(
                     path,
@@ -616,6 +742,8 @@ def main() -> int:
                         "characterId": character_id,
                         "expression": expression,
                         "prompt": prompt,
+                        "referenceExpression": reference_expression or None,
+                        "referencePath": str(ref_path.relative_to(APP_ROOT)) if ref_path else None,
                         "size": args.size,
                         "createdAt": int(time.time()),
                     },

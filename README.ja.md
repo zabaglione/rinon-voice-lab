@@ -195,6 +195,40 @@ Google側の `generationConfig` が利用できる環境では、`--google-send-
 
 より古い Nano Banana モデルを使う場合は、`--google-model gemini-2.5-flash-image` を指定します。高品質寄りの Nano Banana Pro を使う場合は、利用可能な環境で `--google-model gemini-3-pro-image` を指定します。
 
+キャラクターの一貫性を優先する場合は、まず `neutral` だけを生成し、そのあと `neutral` を参照画像として他の表情を生成します。
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --google-model gemini-3.1-flash-image \
+  --character akari \
+  --expression neutral \
+  --update-profiles
+
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --google-model gemini-3.1-flash-image \
+  --character akari \
+  --all-profile-expressions \
+  --reference-expression neutral \
+  --skip-reference-expression \
+  --update-profiles
+```
+
+既存の生成済み画像を作り直す場合は `--overwrite` を付けます。
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --google-model gemini-3.1-flash-image \
+  --character akari \
+  --all-profile-expressions \
+  --reference-expression neutral \
+  --skip-reference-expression \
+  --overwrite \
+  --update-profiles
+```
+
 OpenAI APIで生成する場合は `OPENAI_API_KEY` を設定します。
 
 ```bash

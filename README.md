@@ -208,6 +208,29 @@ When your Google API environment accepts optional image generation config, add
 `--google-image-size`. Leave it off if the API rejects `responseModalities` or
 `responseFormat`.
 
+For stronger character consistency, generate `neutral` first, then use that
+image as the identity reference for the other expressions:
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --google-model gemini-3.1-flash-image \
+  --character akari \
+  --expression neutral \
+  --update-profiles
+
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --google-model gemini-3.1-flash-image \
+  --character akari \
+  --all-profile-expressions \
+  --reference-expression neutral \
+  --skip-reference-expression \
+  --update-profiles
+```
+
+Add `--overwrite` to regenerate existing files instead of skipping them.
+
 Generate with OpenAI:
 
 ```bash
