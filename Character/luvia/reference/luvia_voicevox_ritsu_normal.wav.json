@@ -1,0 +1,77 @@
+{
+  "provider": "voicevox-engine",
+  "engineUrl": "http://127.0.0.1:50021",
+  "engineVersion": "0.25.2",
+  "engineManifest": {
+    "manifestPath": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/engine_manifest.json",
+    "manifestSha256": "f075a630b3fdbcb3dbc1be0ca6fa0560ef220cf85708fdcf8d8c2bf209078e43",
+    "name": "VOICEVOX Engine",
+    "brandName": "VOICEVOX",
+    "uuid": "074fc39e-678b-4c13-8916-ffca8d505d1d",
+    "version": "0.25.2",
+    "url": "https://github.com/VOICEVOX/voicevox_engine",
+    "termsOfService": {
+      "path": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/resources/engine_manifest_assets/terms_of_service.md",
+      "sha256": "5e0d9c5c06c870191c5f0b76b3b4c9d06359b89a51c0b696ca7df1934c3e4f5b"
+    }
+  },
+  "speaker": {
+    "speakerName": "\u6ce2\u97f3\u30ea\u30c4",
+    "speakerUuid": "b1a81618-b27b-40d2-b0ea-27a9ad408c4b",
+    "styleName": "\u30ce\u30fc\u30de\u30eb",
+    "styleId": 9,
+    "styleType": "talk",
+    "version": "0.16.1"
+  },
+  "speakerPolicy": "\u6ce2\u97f3\u30ea\u30c4\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u6ce2\u97f3\u30ea\u30c4\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttp://canon-voice.com/kiyaku.html\n",
+  "speakerInfo": {
+    "policy": "\u6ce2\u97f3\u30ea\u30c4\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u6ce2\u97f3\u30ea\u30c4\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttp://canon-voice.com/kiyaku.html\n",
+    "portrait": "http://127.0.0.1:50021/_resources/ecbbfd85229ebe4c1d535188415eb343762522dbe5465bf495d9262da7afeba6",
+    "style_infos": [
+      {
+        "id": 9,
+        "icon": "http://127.0.0.1:50021/_resources/2af1e53ba36390f91258a30ec706cd8cde2ccaa8bf513d2a4e0538de05761153",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/a226d859c1afd9efafc3c56fea1736e447113aa1f57d4700a3d35870f1eb5736",
+          "http://127.0.0.1:50021/_resources/0c93f940f2583cae7d27ca3e205a4f540a1fb9791286173eb18f03f3d667748c",
+          "http://127.0.0.1:50021/_resources/746ffd02af968c0d25bbe046d07f4a2f3d62cbf293a23e4b42d0e750cf88356b"
+        ]
+      },
+      {
+        "id": 65,
+        "icon": "http://127.0.0.1:50021/_resources/2af1e53ba36390f91258a30ec706cd8cde2ccaa8bf513d2a4e0538de05761153",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/1b042fab0ab0912e2c6df1e772d2940b923119e7fd1463ebfd8ff01707ffad9b",
+          "http://127.0.0.1:50021/_resources/f79211b4ce32f7a86132fbf1c407c2f286c47eddb380c383b1257a29da9ca5c5",
+          "http://127.0.0.1:50021/_resources/e290ba81a9f5c9067e972319de1a5760ea48186bcb128734bca91fa1008702cd"
+        ]
+      }
+    ]
+  },
+  "voiceLicenseAccepted": true,
+  "characterId": "luvia",
+  "outputPath": "Character/luvia/reference/luvia_voicevox_ritsu_normal.wav",
+  "outputSha256": "237b197b6e1ac26e60cb2da4f3db2800ef4b7dd5764b8c46d41d18d7148e96ba",
+  "textSha256": "7c9726ac2e28bb18f0ad3560909e670c173bd4b41cc644ae5054932091788c99",
+  "textLength": 55,
+  "audio": {
+    "channels": 1,
+    "sampleRate": 48000,
+    "frames": 447488,
+    "sampleWidth": 2,
+    "duration": 9.323
+  },
+  "adjustments": {
+    "speedScale": 0.97,
+    "pitchScale": -0.07,
+    "intonationScale": 0.92,
+    "volumeScale": 1.0,
+    "outputSamplingRate": 48000,
+    "prePhonemeLength": null,
+    "postPhonemeLength": null
+  },
+  "elapsed": 2.013,
+  "createdAt": 1780930713
+}

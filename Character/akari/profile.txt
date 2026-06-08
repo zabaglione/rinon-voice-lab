@@ -2,7 +2,7 @@
 # Edit this file, then use Options > キャラ読込 to reload.
 id: akari
 name: アカリ
-referencePath: /Character/rinon/reference/tokyo_ref.wav
+referencePath: /Character/akari/reference/akari_voicevox_tsumugi_normal.wav
 portrait: /Character/akari/expressions/neutral/akari_neutral_generated.png
 
 [systemPrompt]

@@ -2,7 +2,7 @@
 # Edit this file, then use Options > キャラ読込 to reload.
 id: makoto
 name: マコト
-referencePath: /Character/luvia/reference/luvia_smoky_radio_pitchdown3_ref.wav
+referencePath: /Character/makoto/reference/makoto_voicevox_aoyama_shittori.wav
 portrait: /Character/makoto/expressions/neutral/makoto_neutral_generated.png
 
 [systemPrompt]

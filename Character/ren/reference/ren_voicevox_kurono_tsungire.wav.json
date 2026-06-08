@@ -1,0 +1,97 @@
+{
+  "provider": "voicevox-engine",
+  "engineUrl": "http://127.0.0.1:50021",
+  "engineVersion": "0.25.2",
+  "engineManifest": {
+    "manifestPath": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/engine_manifest.json",
+    "manifestSha256": "f075a630b3fdbcb3dbc1be0ca6fa0560ef220cf85708fdcf8d8c2bf209078e43",
+    "name": "VOICEVOX Engine",
+    "brandName": "VOICEVOX",
+    "uuid": "074fc39e-678b-4c13-8916-ffca8d505d1d",
+    "version": "0.25.2",
+    "url": "https://github.com/VOICEVOX/voicevox_engine",
+    "termsOfService": {
+      "path": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/resources/engine_manifest_assets/terms_of_service.md",
+      "sha256": "5e0d9c5c06c870191c5f0b76b3b4c9d06359b89a51c0b696ca7df1934c3e4f5b"
+    }
+  },
+  "speaker": {
+    "speakerName": "\u7384\u91ce\u6b66\u5b8f",
+    "speakerUuid": "c30dc15a-0992-4f8d-8bb8-ad3b314e6a6f",
+    "styleName": "\u30c4\u30f3\u30ae\u30ec",
+    "styleId": 40,
+    "styleType": "talk",
+    "version": "0.16.1"
+  },
+  "speakerPolicy": "\u7384\u91ce\u6b66\u5b8f\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u7384\u91ce\u6b66\u5b8f\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://www.virvoxproject.com/voicevox\u306e\u5229\u7528\u898f\u7d04\n",
+  "speakerInfo": {
+    "policy": "\u7384\u91ce\u6b66\u5b8f\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u7384\u91ce\u6b66\u5b8f\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://www.virvoxproject.com/voicevox\u306e\u5229\u7528\u898f\u7d04\n",
+    "portrait": "http://127.0.0.1:50021/_resources/cad5b232817037e0e0aa0dd5264791f5b432ca471257eaa5359edeb2b510a3df",
+    "style_infos": [
+      {
+        "id": 11,
+        "icon": "http://127.0.0.1:50021/_resources/9f12609567114dc512adc589e92ef6bd40eddac893102158391dba5e7565a51e",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/9022f0590fb9ac9a1fef920025c640b2c47340f3f5eda084df2d278cadc1d53d",
+          "http://127.0.0.1:50021/_resources/875591faed416aaa00a938a2b9f08d41a0b36cbf4987dbc4c0b9403b6bbded02",
+          "http://127.0.0.1:50021/_resources/66a62b3741e2d4b338df1d7ad9943a51be5fa9fdc8a07fd9561964b63cb615c3"
+        ]
+      },
+      {
+        "id": 39,
+        "icon": "http://127.0.0.1:50021/_resources/4135f7ceed6fdf0da6eac8694d18c0cdf50045cdfde8c026da142d696d120bcf",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/61463942253a9d565cb455db08a550820adf3af63528a4031ef5a7f7f86c7423",
+          "http://127.0.0.1:50021/_resources/1976a818861b09f8846112024faf02cfa4c5f7a1e2a20092ec20e9913ff5a509",
+          "http://127.0.0.1:50021/_resources/f92e1c024ef6916e669749e9560542c4de4c04c4b40dc64ba63ddf4388920389"
+        ]
+      },
+      {
+        "id": 40,
+        "icon": "http://127.0.0.1:50021/_resources/4135f7ceed6fdf0da6eac8694d18c0cdf50045cdfde8c026da142d696d120bcf",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/b3c6eb5be052a92ffeed49ad2c52b5c106b5cf674fe174fa75ccd120160ac86c",
+          "http://127.0.0.1:50021/_resources/5620cf009be121890c21150ed138474800687f691b7718f4238a50d9e02dcc69",
+          "http://127.0.0.1:50021/_resources/88beaa24c4672bb6101fc82f36394697a6530dcd93087d7d1f3281cee1d882d3"
+        ]
+      },
+      {
+        "id": 41,
+        "icon": "http://127.0.0.1:50021/_resources/64ab6bcadc27abe87680ac639a620d2346cca99943ae47c9fb5fe6ef1dad1acb",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/c67c8ceca1111823cd3e0a888a17549b8dd44383e8552f0a938cb30cfc1a7d5a",
+          "http://127.0.0.1:50021/_resources/80576d167aeee3b24c78492bc6f1b0d15f5a236e994c9b90f170fee1020f0cdc",
+          "http://127.0.0.1:50021/_resources/e4c231ffc84519bd02d3d1eda93085cb9873d82061e968ab153d2b0081aaf2c0"
+        ]
+      }
+    ]
+  },
+  "voiceLicenseAccepted": true,
+  "characterId": "ren",
+  "outputPath": "Character/ren/reference/ren_voicevox_kurono_tsungire.wav",
+  "outputSha256": "d737971dc0d4b410923ff22d767fa8f42fa0ad3ba94d88dab04eaf62be38e455",
+  "textSha256": "ab41ca609548c324283f278b6bedf9cd5445f8950b8d85a2d0cd35c724939f0e",
+  "textLength": 52,
+  "audio": {
+    "channels": 1,
+    "sampleRate": 48000,
+    "frames": 420352,
+    "sampleWidth": 2,
+    "duration": 8.757
+  },
+  "adjustments": {
+    "speedScale": 0.96,
+    "pitchScale": -0.09,
+    "intonationScale": 0.82,
+    "volumeScale": 1.0,
+    "outputSamplingRate": 48000,
+    "prePhonemeLength": null,
+    "postPhonemeLength": null
+  },
+  "elapsed": 1.563,
+  "createdAt": 1780961681
+}

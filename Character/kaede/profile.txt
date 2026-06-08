@@ -2,7 +2,7 @@
 # Edit this file, then use Options > キャラ読込 to reload.
 id: kaede
 name: カエデ
-referencePath: /Character/rinon/reference/tokyo_ref.wav
+referencePath: /Character/kaede/reference/kaede_voicevox_sora_normal.wav
 portrait: /Character/kaede/expressions/neutral/kaede_neutral_generated.png
 
 [systemPrompt]

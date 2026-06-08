@@ -392,6 +392,11 @@ def character_design(character_id: str, profile: dict[str, Any]) -> str:
     design = CHARACTER_DESIGNS.get(character_id)
     if design:
         return design
+    design_path = CHARACTER_ROOT / character_id / "image_design.txt"
+    if design_path.exists():
+        text = design_path.read_text(encoding="utf-8").strip()
+        if text:
+            return " ".join(text.split())
     return f"adult Japanese anime character with profile id {character_id}, distinct memorable design"
 
 

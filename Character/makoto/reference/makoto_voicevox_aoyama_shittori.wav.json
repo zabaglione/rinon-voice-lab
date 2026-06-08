@@ -1,0 +1,127 @@
+{
+  "provider": "voicevox-engine",
+  "engineUrl": "http://127.0.0.1:50021",
+  "engineVersion": "0.25.2",
+  "engineManifest": {
+    "manifestPath": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/engine_manifest.json",
+    "manifestSha256": "f075a630b3fdbcb3dbc1be0ca6fa0560ef220cf85708fdcf8d8c2bf209078e43",
+    "name": "VOICEVOX Engine",
+    "brandName": "VOICEVOX",
+    "uuid": "074fc39e-678b-4c13-8916-ffca8d505d1d",
+    "version": "0.25.2",
+    "url": "https://github.com/VOICEVOX/voicevox_engine",
+    "termsOfService": {
+      "path": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/resources/engine_manifest_assets/terms_of_service.md",
+      "sha256": "5e0d9c5c06c870191c5f0b76b3b4c9d06359b89a51c0b696ca7df1934c3e4f5b"
+    }
+  },
+  "speaker": {
+    "speakerName": "\u9752\u5c71\u9f8d\u661f",
+    "speakerUuid": "4f51116a-d9ee-4516-925d-21f183e2afad",
+    "styleName": "\u3057\u3063\u3068\u308a",
+    "styleId": 84,
+    "styleType": "talk",
+    "version": "0.16.1"
+  },
+  "speakerPolicy": "\u500b\u4eba\u304c\u9752\u5c71\u9f8d\u661f\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u9752\u5c71\u9f8d\u661f\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\u305f\u3060\u3057\u4f01\u696d\u304c\u643a\u308f\u308b\u5f62\u3067\u5229\u7528\u3059\u308b\u5834\u5408\u306f\u3001\u300c\u306a\u306a\u306f\u3074(https://v.seventhh.com/contact/)\u300d\u306b\u5bfe\u3057\u4e8b\u524d\u78ba\u8a8d\u3092\u53d6\u308b\u5fc5\u8981\u304c\u3042\u308a\u307e\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://www.virvoxproject.com/voicevox\u306e\u5229\u7528\u898f\u7d04\n",
+  "speakerInfo": {
+    "policy": "\u500b\u4eba\u304c\u9752\u5c71\u9f8d\u661f\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u9752\u5c71\u9f8d\u661f\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\u305f\u3060\u3057\u4f01\u696d\u304c\u643a\u308f\u308b\u5f62\u3067\u5229\u7528\u3059\u308b\u5834\u5408\u306f\u3001\u300c\u306a\u306a\u306f\u3074(https://v.seventhh.com/contact/)\u300d\u306b\u5bfe\u3057\u4e8b\u524d\u78ba\u8a8d\u3092\u53d6\u308b\u5fc5\u8981\u304c\u3042\u308a\u307e\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://www.virvoxproject.com/voicevox\u306e\u5229\u7528\u898f\u7d04\n",
+    "portrait": "http://127.0.0.1:50021/_resources/a83dad0e10d06e7c2cbaa13f8a582a4e3b13cc1280c8c84d62f05937a1d33d8f",
+    "style_infos": [
+      {
+        "id": 13,
+        "icon": "http://127.0.0.1:50021/_resources/5b545eb5106d2fe0fadb89a9a5a00c5d9f9164604dd8de6e50d55d3c72e2ec29",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/3a38c796745a14cc530b3c5523388027a821c2c49fbfed34edf55a3d41dc2c3c",
+          "http://127.0.0.1:50021/_resources/10c9990663aff76566f281a25cd67974fb2f3c6a8996e923124545984b379c49",
+          "http://127.0.0.1:50021/_resources/a0f5d2a167007a7d95adda737280c3e8a45ff8f4e88f14bfd605b933b5e763e9"
+        ]
+      },
+      {
+        "id": 81,
+        "icon": "http://127.0.0.1:50021/_resources/7b8f11d49db59dc95d5cba4f6834bff26bba95efad1b205c426e1e382e30e636",
+        "portrait": "http://127.0.0.1:50021/_resources/f8a2e7d39bff6a143c5720e2d9b5f7fa36ee85732133161b8f44ed7a691ad852",
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/29746534f568d047220196a1b3b4e7187b23c45af691b669bfc3ea445099fb44",
+          "http://127.0.0.1:50021/_resources/b54eabbd8eedf97645bdf23cea51430b48b639a69bc0e3b5766851603bf348e0",
+          "http://127.0.0.1:50021/_resources/009884d6482d96fdf21c649006d502f3d5e74a2c8ae467b30bd6e4c1b5937033"
+        ]
+      },
+      {
+        "id": 82,
+        "icon": "http://127.0.0.1:50021/_resources/7b8f11d49db59dc95d5cba4f6834bff26bba95efad1b205c426e1e382e30e636",
+        "portrait": "http://127.0.0.1:50021/_resources/86f2398641e2b373249b40c5d515afd6a6d9cea5c464e64556d77b27afb679c4",
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/1e1377c1b7e4cf4fac1d2f8a37a18dc26fa773549701dbd1297877a84c5a4b8d",
+          "http://127.0.0.1:50021/_resources/18dd78ca8fc3eee8b1810c32997cb9fc5bc90372a66b1d035f7bc0e67a9b917d",
+          "http://127.0.0.1:50021/_resources/e825e8074f2a667b50d590c39284ac73f152b29ebd62989a498b63f17ba5becc"
+        ]
+      },
+      {
+        "id": 83,
+        "icon": "http://127.0.0.1:50021/_resources/7b8f11d49db59dc95d5cba4f6834bff26bba95efad1b205c426e1e382e30e636",
+        "portrait": "http://127.0.0.1:50021/_resources/f5c0229a52aff2c4578a88256c425c85fc5b9d5153954aa3019372bafebab98f",
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/a53a701db83201cf9f91884856c7e50b1bc11a44c3951dd716c6ce37c0886062",
+          "http://127.0.0.1:50021/_resources/3d3a87629a1ae274448ba66b684fde05992a2898b14cc34985298d54335731d0",
+          "http://127.0.0.1:50021/_resources/7c4fe2c110754eba0aed2053ba74d38be3aed74a19ebc0fa84edfa96a265268c"
+        ]
+      },
+      {
+        "id": 84,
+        "icon": "http://127.0.0.1:50021/_resources/7b8f11d49db59dc95d5cba4f6834bff26bba95efad1b205c426e1e382e30e636",
+        "portrait": "http://127.0.0.1:50021/_resources/5d0f8c48c36152500c27399e21dd3cc622b07743e532e3de42ef6a259262d276",
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/9ec35bcfc3b15cb6d87aa29d304bcc61dc57fce4dfd36c61c490355122aa376f",
+          "http://127.0.0.1:50021/_resources/d9e9c412fb190dc8308665fee3ca21578a3dc25e0cf6d4a5b7b718ae9c00f34e",
+          "http://127.0.0.1:50021/_resources/1b51170b8d22eaac1e452899f05b98dab58c67e1837bb9e964bd5b9c3eb3c7ea"
+        ]
+      },
+      {
+        "id": 85,
+        "icon": "http://127.0.0.1:50021/_resources/9d7ca7dc618ddd5459581f796c0ff3def1dcea5e6c5d13e6c48c32da65075548",
+        "portrait": "http://127.0.0.1:50021/_resources/de4e70044dc15f4f1b86f65193effb3f02811f4561d893a2f1f3ced5dd06b922",
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/79cae2a52712b95a29debc47d47cd011e52499132b07c75ac4bea9284526803b",
+          "http://127.0.0.1:50021/_resources/6aa7079080d92be11a379ceecaab0ab31ea3960e753f7c2dccd5c6fad83aea4a",
+          "http://127.0.0.1:50021/_resources/544a84decde3002c0ebe901624a4edf8deb6907902392e734de7f98bbb023ae3"
+        ]
+      },
+      {
+        "id": 86,
+        "icon": "http://127.0.0.1:50021/_resources/9d7ca7dc618ddd5459581f796c0ff3def1dcea5e6c5d13e6c48c32da65075548",
+        "portrait": "http://127.0.0.1:50021/_resources/55f1c2ffb3f782a21098b709b18b14b3aef4ad7b73478cb7484f75062685ec98",
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/d6a2d55f43ad3522636aa4149525ac3b3124fc509570002f3873914250743482",
+          "http://127.0.0.1:50021/_resources/5618d6926261ffad8f157cee5f6cc92c7f3ac4bfd4b8c82a6ff77b75932d241f",
+          "http://127.0.0.1:50021/_resources/d6c207f85b0f3acf904280865dcc4e683d3408a2781f1cc528101f97b8c61a06"
+        ]
+      }
+    ]
+  },
+  "voiceLicenseAccepted": true,
+  "characterId": "makoto",
+  "outputPath": "Character/makoto/reference/makoto_voicevox_aoyama_shittori.wav",
+  "outputSha256": "121dd5e3527f210018ca4069414f02cbae3af4ebc3b247bcfa22e7ccf05d8725",
+  "textSha256": "e36d4d8487b78548d02c24965c98a7bb775faf24a42c6486b07a8f1b1238aa25",
+  "textLength": 58,
+  "audio": {
+    "channels": 1,
+    "sampleRate": 48000,
+    "frames": 494080,
+    "sampleWidth": 2,
+    "duration": 10.293
+  },
+  "adjustments": {
+    "speedScale": 0.9,
+    "pitchScale": -0.07,
+    "intonationScale": 0.76,
+    "volumeScale": 1.0,
+    "outputSamplingRate": 48000,
+    "prePhonemeLength": null,
+    "postPhonemeLength": null
+  },
+  "elapsed": 2.139,
+  "createdAt": 1780930542
+}

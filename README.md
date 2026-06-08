@@ -269,6 +269,69 @@ python3.10 -B tools/generate_character_images.py \
   --update-profiles
 ```
 
+## Character Reference Audio
+
+`tools/generate_character_reference_audio.py` creates Irodori VoiceDesign
+reference wav files from a character profile. Add `--reference-wav` when you
+want to seed Irodori from an existing short voice sample:
+
+```bash
+python3.10 -B tools/generate_character_reference_audio.py \
+  --character yuto \
+  --text-file prompts/reference_voice.txt \
+  --reference-wav Character/yuto/reference/yuto_voicevox_ref.wav \
+  --update-profiles \
+  --overwrite
+```
+
+VOICEVOX Engine can be used to create the seed wav. The script records the
+engine terms checksum, selected speaker/style, and the selected speaker policy
+next to the generated wav. Synthesis intentionally requires
+`--accept-voice-license`; list and inspect the available voices first:
+
+```bash
+python3.10 -B tools/generate_voicevox_reference_audio.py \
+  --start-engine \
+  --list-speakers
+
+python3.10 -B tools/generate_voicevox_reference_audio.py \
+  --start-engine \
+  --speaker-id 13 \
+  --show-license
+```
+
+After confirming the selected voice policy:
+
+```bash
+python3.10 -B tools/generate_voicevox_reference_audio.py \
+  --start-engine \
+  --character yuto \
+  --speaker-id 13 \
+  --text-file prompts/reference_voice.txt \
+  --accept-voice-license \
+  --update-profile \
+  --overwrite
+```
+
+The unified character creation command can also generate a VOICEVOX seed first
+and then pass it to Irodori:
+
+```bash
+python3.10 -B tools/create_character.py \
+  --id yuto \
+  --name Yuto \
+  --system-prompt-file prompts/yuto_system.txt \
+  --tts-caption-file prompts/yuto_voice.txt \
+  --design-prompt-file prompts/yuto_design.txt \
+  --voice-text-file prompts/reference_voice.txt \
+  --generate-voicevox-reference-audio \
+  --voicevox-speaker-id 13 \
+  --voicevox-accept-license \
+  --voicevox-start-engine \
+  --generate-reference-audio \
+  --audio-overwrite
+```
+
 ## Optional 2P Remote TTS
 
 By default, both 1P and 2P voices are generated on the local Irodori-TTS

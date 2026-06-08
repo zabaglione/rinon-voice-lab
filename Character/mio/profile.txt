@@ -2,7 +2,7 @@
 # Edit this file, then use Options > キャラ読込 to reload.
 id: mio
 name: ミオ
-referencePath: /Character/rinon/reference/tokyo_ref.wav
+referencePath: /Character/mio/reference/mio_voicevox_no7_yomikikase.wav
 portrait: /Character/mio/expressions/neutral/mio_neutral_generated.png
 
 [systemPrompt]

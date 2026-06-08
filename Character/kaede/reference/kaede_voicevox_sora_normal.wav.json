@@ -1,0 +1,107 @@
+{
+  "provider": "voicevox-engine",
+  "engineUrl": "http://127.0.0.1:50021",
+  "engineVersion": "0.25.2",
+  "engineManifest": {
+    "manifestPath": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/engine_manifest.json",
+    "manifestSha256": "f075a630b3fdbcb3dbc1be0ca6fa0560ef220cf85708fdcf8d8c2bf209078e43",
+    "name": "VOICEVOX Engine",
+    "brandName": "VOICEVOX",
+    "uuid": "074fc39e-678b-4c13-8916-ffca8d505d1d",
+    "version": "0.25.2",
+    "url": "https://github.com/VOICEVOX/voicevox_engine",
+    "termsOfService": {
+      "path": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/resources/engine_manifest_assets/terms_of_service.md",
+      "sha256": "5e0d9c5c06c870191c5f0b76b3b4c9d06359b89a51c0b696ca7df1934c3e4f5b"
+    }
+  },
+  "speaker": {
+    "speakerName": "\u4e5d\u5dde\u305d\u3089",
+    "speakerUuid": "481fb609-6446-4870-9f46-90c4dd623403",
+    "styleName": "\u30ce\u30fc\u30de\u30eb",
+    "styleId": 16,
+    "styleType": "talk",
+    "version": "0.16.1"
+  },
+  "speakerPolicy": "\u4e5d\u5dde\u305d\u3089\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u4e5d\u5dde\u305d\u3089\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://zunko.jp/con_ongen_kiyaku.html\n",
+  "speakerInfo": {
+    "policy": "\u4e5d\u5dde\u305d\u3089\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u4e5d\u5dde\u305d\u3089\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://zunko.jp/con_ongen_kiyaku.html\n",
+    "portrait": "http://127.0.0.1:50021/_resources/1478b57e5832fefbbc94d62b500d020ff6d2526a3c239753f5314315b8a84523",
+    "style_infos": [
+      {
+        "id": 16,
+        "icon": "http://127.0.0.1:50021/_resources/6838ef8d1d22bad94c06327d171fd8025997c1264b3e82a05dfcd2593c2d989b",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/30f6dc5685f8aeccec0e76e569531c0e0772ef875d08d92ccdb94223245bc8c8",
+          "http://127.0.0.1:50021/_resources/d9ed395e31099d7ab53738402aad0e1246d07af2a151fbc2786dcd2e98d824f7",
+          "http://127.0.0.1:50021/_resources/01cbca39c11401088639ad37884d5df2e50a8dd61198df47ced9674aec973d3b"
+        ]
+      },
+      {
+        "id": 15,
+        "icon": "http://127.0.0.1:50021/_resources/f29e36a5f8200b7c82e0dda12c5c1a020b982b4189a3f8c86c67ecc7a365e076",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/105198acf0e3b019af267275b1b87079823059c4a35e7685a858a7ea3bcc098e",
+          "http://127.0.0.1:50021/_resources/e3bfb8f41095f8268f35df2d7cd825ba8af026716c36b21dc396fb33d1cb58fa",
+          "http://127.0.0.1:50021/_resources/ed9aad9bdfde8e1507600c1befa2f0a64a94529e852052f4798c50beb163b6ba"
+        ]
+      },
+      {
+        "id": 18,
+        "icon": "http://127.0.0.1:50021/_resources/b349e8131c89052810b3ebf8ba04969a844de16a8a73de232bed01d0a717c1c2",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/b1f1c251da1d8120e809c6ddacda1a3debe9c5ead496223f4fe5e68dea09afd8",
+          "http://127.0.0.1:50021/_resources/a923bccca6af4d9e041a2d153393c7973527212fcb1888810d3f8898f4ef1b1c",
+          "http://127.0.0.1:50021/_resources/e7eec25b3957e12dec6f758f5c090900f56c7f78bf45d98e0e35ae3e147a198b"
+        ]
+      },
+      {
+        "id": 17,
+        "icon": "http://127.0.0.1:50021/_resources/9ae7d1c51b5b7413becff0b600624250cde47679d433a1da653c8b58e6f4bf1c",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/d75c1860a5acfa563158e5d81ff9b9e292712cf762ef0688f4e8839d7fd24919",
+          "http://127.0.0.1:50021/_resources/8651b82db9823bf24482e4f795e03a15b991d07031f6e00c8a4aa6b51b743b22",
+          "http://127.0.0.1:50021/_resources/aac79d7c1bb7f10418fca76dc44cf7c08df5d9c59adac3711d0a7b19e55358a9"
+        ]
+      },
+      {
+        "id": 19,
+        "icon": "http://127.0.0.1:50021/_resources/141df80f01e3a7d6df542cdd9c0775c9660bbd6ea071f643a86adeb03943f350",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/4c3aa9f91f8dac0422dee9f3234b7f80c2e8b39467e1538feaf4a1769ea2cb02",
+          "http://127.0.0.1:50021/_resources/d7ac26832ad5dc61952fab66eefb2ea547ebb2c58b507f550c57d957c81464e3",
+          "http://127.0.0.1:50021/_resources/38b2377aa509a9280a7af5155042268d6f5762e494aef9387f3be1712ee752b0"
+        ]
+      }
+    ]
+  },
+  "voiceLicenseAccepted": true,
+  "characterId": "kaede",
+  "outputPath": "Character/kaede/reference/kaede_voicevox_sora_normal.wav",
+  "outputSha256": "73cff483bce1ae9946e4cd71133fea16077ccd63e3479e544437e2718a8cd71e",
+  "textSha256": "1346b338f016b967164ed92a6eeb1f60df4463f201faf15a91bef2f7cf138266",
+  "textLength": 57,
+  "audio": {
+    "channels": 1,
+    "sampleRate": 48000,
+    "frames": 774144,
+    "sampleWidth": 2,
+    "duration": 16.128
+  },
+  "adjustments": {
+    "speedScale": 0.88,
+    "pitchScale": -0.05,
+    "intonationScale": 0.74,
+    "volumeScale": 1.0,
+    "outputSamplingRate": 48000,
+    "prePhonemeLength": null,
+    "postPhonemeLength": null
+  },
+  "elapsed": 2.394,
+  "createdAt": 1780930699
+}

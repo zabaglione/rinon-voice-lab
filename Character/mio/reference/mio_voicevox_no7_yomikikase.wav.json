@@ -1,0 +1,87 @@
+{
+  "provider": "voicevox-engine",
+  "engineUrl": "http://127.0.0.1:50021",
+  "engineVersion": "0.25.2",
+  "engineManifest": {
+    "manifestPath": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/engine_manifest.json",
+    "manifestSha256": "f075a630b3fdbcb3dbc1be0ca6fa0560ef220cf85708fdcf8d8c2bf209078e43",
+    "name": "VOICEVOX Engine",
+    "brandName": "VOICEVOX",
+    "uuid": "074fc39e-678b-4c13-8916-ffca8d505d1d",
+    "version": "0.25.2",
+    "url": "https://github.com/VOICEVOX/voicevox_engine",
+    "termsOfService": {
+      "path": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/resources/engine_manifest_assets/terms_of_service.md",
+      "sha256": "5e0d9c5c06c870191c5f0b76b3b4c9d06359b89a51c0b696ca7df1934c3e4f5b"
+    }
+  },
+  "speaker": {
+    "speakerName": "No.7",
+    "speakerUuid": "044830d2-f23b-44d6-ac0d-b5d733caa900",
+    "styleName": "\u8aad\u307f\u805e\u304b\u305b",
+    "styleId": 31,
+    "styleType": "talk",
+    "version": "0.16.1"
+  },
+  "speakerPolicy": "\u500b\u4eba\u304cNo.7\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:No.7\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u975e\u5546\u7528\uff08\u540c\u4eba\u5229\u7528\u3084\u914d\u4fe1\u306b\u3088\u308b\u53ce\u5165\u306fOK\uff09\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\u305d\u306e\u4ed6\u5546\u7528\u5229\u7528\u306e\u5834\u5408\u306f\u3001\u300c[No.7\u88fd\u4f5c\u59d4\u54e1\u4f1a](https://voiceseven.com/)\u300d\u306b\u5bfe\u3057\u4e8b\u524d\u78ba\u8a8d\u3092\u53d6\u308b\u5fc5\u8981\u304c\u3042\u308a\u307e\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://voiceseven.com/#j0200\n",
+  "speakerInfo": {
+    "policy": "\u500b\u4eba\u304cNo.7\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:No.7\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u975e\u5546\u7528\uff08\u540c\u4eba\u5229\u7528\u3084\u914d\u4fe1\u306b\u3088\u308b\u53ce\u5165\u306fOK\uff09\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\u305d\u306e\u4ed6\u5546\u7528\u5229\u7528\u306e\u5834\u5408\u306f\u3001\u300c[No.7\u88fd\u4f5c\u59d4\u54e1\u4f1a](https://voiceseven.com/)\u300d\u306b\u5bfe\u3057\u4e8b\u524d\u78ba\u8a8d\u3092\u53d6\u308b\u5fc5\u8981\u304c\u3042\u308a\u307e\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://voiceseven.com/#j0200\n",
+    "portrait": "http://127.0.0.1:50021/_resources/1c39d13fabe00347cebe8038734af0c4a6361c05b9be1dda6068ac6d0caad1a8",
+    "style_infos": [
+      {
+        "id": 29,
+        "icon": "http://127.0.0.1:50021/_resources/98657c46de986a7fa592aae6c0823287f1fea8f263a4e7bb845f1f93202c0372",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/26ad5ff72fa936f7bdd7cca7dc4991b110a5caa75b56d79f3443e6a75b88cb6f",
+          "http://127.0.0.1:50021/_resources/760dd2d8b1fc51a87792946619cc597848137d612513cce872d16c1427301cce",
+          "http://127.0.0.1:50021/_resources/162cdfbd6779b0ea3b99180b03d671494c98cdf114fffedb14c34b19e816b535"
+        ]
+      },
+      {
+        "id": 30,
+        "icon": "http://127.0.0.1:50021/_resources/57313657b1537004a07498c576e7596e7ff9f987cb096ce55f45b64065e52cc5",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/d813b83b45adf37fb492d89229c6bf0ea0dcb238eab1f2ecc7ae864edac76160",
+          "http://127.0.0.1:50021/_resources/c144a13174e4de20fa9c0b2885408461f57b1d295edec13a3d7167ed9cc3759f",
+          "http://127.0.0.1:50021/_resources/47df301295422cb9daab6080d6b02bcc1752df672732906d2d8ac39f6012c04d"
+        ]
+      },
+      {
+        "id": 31,
+        "icon": "http://127.0.0.1:50021/_resources/651b6fa833e48366431a8b97312416bdcb8e39c8f41d7d2c04cd6c7e7da5a428",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/65e95c0c29ce53ab2b48991dd380bef5679617fe63573f52300cc3ae1a834119",
+          "http://127.0.0.1:50021/_resources/1ca2c5a54ca750e6b2cd042bea258b3507b100ab59a4f5c88e3eaa9598f30f5a",
+          "http://127.0.0.1:50021/_resources/5c1fab5efac336d918f14b71e3b878fd0d22f64f219c98796d7e3841d40999f5"
+        ]
+      }
+    ]
+  },
+  "voiceLicenseAccepted": true,
+  "characterId": "mio",
+  "outputPath": "Character/mio/reference/mio_voicevox_no7_yomikikase.wav",
+  "outputSha256": "bf7530abe9eae7a1d85f0cfc3338676343a037be11fcd8be9c84195e03c23e3a",
+  "textSha256": "6655dabd5e975d284ea5e5c38f4ba5502cb8a7f179dcb6841ec34ae738c5d032",
+  "textLength": 64,
+  "audio": {
+    "channels": 1,
+    "sampleRate": 48000,
+    "frames": 783872,
+    "sampleWidth": 2,
+    "duration": 16.331
+  },
+  "adjustments": {
+    "speedScale": 0.88,
+    "pitchScale": -0.02,
+    "intonationScale": 0.7,
+    "volumeScale": 1.0,
+    "outputSamplingRate": 48000,
+    "prePhonemeLength": null,
+    "postPhonemeLength": null
+  },
+  "elapsed": 2.227,
+  "createdAt": 1780930729
+}

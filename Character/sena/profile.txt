@@ -2,7 +2,7 @@
 # Edit this file, then use Options > キャラ読込 to reload.
 id: sena
 name: セナ
-referencePath: /Character/rinon/reference/tokyo_ref.wav
+referencePath: /Character/sena/reference/sena_voicevox_no7_announce.wav
 portrait: /Character/sena/expressions/neutral/sena_neutral_generated.png
 
 [systemPrompt]

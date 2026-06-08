@@ -1,0 +1,117 @@
+{
+  "provider": "voicevox-engine",
+  "engineUrl": "http://127.0.0.1:50021",
+  "engineVersion": "0.25.2",
+  "engineManifest": {
+    "manifestPath": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/engine_manifest.json",
+    "manifestSha256": "f075a630b3fdbcb3dbc1be0ca6fa0560ef220cf85708fdcf8d8c2bf209078e43",
+    "name": "VOICEVOX Engine",
+    "brandName": "VOICEVOX",
+    "uuid": "074fc39e-678b-4c13-8916-ffca8d505d1d",
+    "version": "0.25.2",
+    "url": "https://github.com/VOICEVOX/voicevox_engine",
+    "termsOfService": {
+      "path": "/Applications/VOICEVOX.app/Contents/Resources/vv-engine/resources/engine_manifest_assets/terms_of_service.md",
+      "sha256": "5e0d9c5c06c870191c5f0b76b3b4c9d06359b89a51c0b696ca7df1934c3e4f5b"
+    }
+  },
+  "speaker": {
+    "speakerName": "\u56db\u56fd\u3081\u305f\u3093",
+    "speakerUuid": "7ffcb7ce-00ec-4bdc-82cd-45a8889e43ff",
+    "styleName": "\u3042\u307e\u3042\u307e",
+    "styleId": 0,
+    "styleType": "talk",
+    "version": "0.16.1"
+  },
+  "speakerPolicy": "\u56db\u56fd\u3081\u305f\u3093\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u56db\u56fd\u3081\u305f\u3093\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://zunko.jp/con_ongen_kiyaku.html\n",
+  "speakerInfo": {
+    "policy": "\u56db\u56fd\u3081\u305f\u3093\u306e\u97f3\u58f0\u30e9\u30a4\u30d6\u30e9\u30ea\u3092\u7528\u3044\u3066\u751f\u6210\u3057\u305f\u97f3\u58f0\u306f\u3001\n\u300cVOICEVOX:\u56db\u56fd\u3081\u305f\u3093\u300d\u3068\u30af\u30ec\u30b8\u30c3\u30c8\u3092\u8a18\u8f09\u3059\u308c\u3070\u3001\u5546\u7528\u30fb\u975e\u5546\u7528\u3067\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002\n\n\u5229\u7528\u898f\u7d04\u306e\u8a73\u7d30\u306f\u4ee5\u4e0b\u3092\u3054\u78ba\u8a8d\u304f\u3060\u3055\u3044\u3002  \nhttps://zunko.jp/con_ongen_kiyaku.html\n",
+    "portrait": "http://127.0.0.1:50021/_resources/8496e5617ad4d9a3f6a9e6647a91fe90f966243f35d775e8e213e8d9355d5030",
+    "style_infos": [
+      {
+        "id": 2,
+        "icon": "http://127.0.0.1:50021/_resources/17f2a1c9ba3bfa4675f8c63e1233d16d4b52511e609701c8f92d9f5a79613480",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/e6abc62909c1d9d925d18d3195f98286f7a4a8f02f6cca862aaa434ef91aed21",
+          "http://127.0.0.1:50021/_resources/81c75b874f192ce0415e047ff4bc5772139090376f06c1775c2e8159a3daff26",
+          "http://127.0.0.1:50021/_resources/4a2ad1145f6dff443685d90c38b84672f92da2346c32ffc55f1d2957c31385a6"
+        ]
+      },
+      {
+        "id": 0,
+        "icon": "http://127.0.0.1:50021/_resources/6c74485813cd230fcc18c6f2819dc9d4523d00ce7e4a43312e1f59785c2287f4",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/87e85e724ea90076378ea7cd05a612be3c835b9f5d5eef3ab0a764a42f18d8f9",
+          "http://127.0.0.1:50021/_resources/5128a4a0d060352cb2d4c145f575253a5f19c3a0a1b7d098de327128d26393b1",
+          "http://127.0.0.1:50021/_resources/edb74b0030ebb9926b9c84832aca10178c449fc91283207216ca02f7964a3213"
+        ]
+      },
+      {
+        "id": 6,
+        "icon": "http://127.0.0.1:50021/_resources/5d9a993fdfbc2482582b1bd41f8ffc85aad5438e8456487a51d549be0e2a484c",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/fd487b5ba1a33f03dd00f2ccee4676c364848b2a769766e784bf9886fe73a210",
+          "http://127.0.0.1:50021/_resources/8d5fca94a04134038affe396b35d4ef9dc06aaa4f93061fb2068262bce5de1fd",
+          "http://127.0.0.1:50021/_resources/f420fc40d71c092c45e5df426abdaac00b4b85f04093899ff43dad325e3e42ec"
+        ]
+      },
+      {
+        "id": 4,
+        "icon": "http://127.0.0.1:50021/_resources/57c747530764419fcade2c7c020bf8dcc7bfc3ce6ce2c2f0701dd38922c475ad",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/41f0f4dd473fbd42a68f4dffa90eae79d77f26b82c534b503e22d46e0202ed0e",
+          "http://127.0.0.1:50021/_resources/a5f6299bf35c6aa422b4be49d06152289509a436ee7553728d5b68c5fc1ac880",
+          "http://127.0.0.1:50021/_resources/8ab50e880fba92355649d4eb866fb39635c9d56fc22b1b58db0c110ac143328c"
+        ]
+      },
+      {
+        "id": 36,
+        "icon": "http://127.0.0.1:50021/_resources/63cf038fa0139db472b30fc3d2779d813b1ba9d8ea3e1358e0e733791c91ad96",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/97b76dcafcca5a89d0d33863db71b502bb2e001e3aab4c5b181af35999c11ce0",
+          "http://127.0.0.1:50021/_resources/113d2a98800d74cdabc7cdf642cce8c9557e66ab6f7bc03354a360f6ec919f63",
+          "http://127.0.0.1:50021/_resources/137e636625f7f5b6123190b8019f2af8e17112e242e8db64209c10a6d9d2116c"
+        ]
+      },
+      {
+        "id": 37,
+        "icon": "http://127.0.0.1:50021/_resources/5ee9429b39304a5320d7df5f19e87245a342aa82cbfcfeccf9a4fb7a4304b3c5",
+        "portrait": null,
+        "voice_samples": [
+          "http://127.0.0.1:50021/_resources/01410c9d605b84dff7f6052d675973a6d3e845a9ef463373d44337c9fb6316ab",
+          "http://127.0.0.1:50021/_resources/2c0c56d9e8a9664f9acb55ce1ee923c979baa098f53224e197ec2663a22488d2",
+          "http://127.0.0.1:50021/_resources/81fdcaf25b1170c546805007a619b5f398ce04677c62201f419885519283d4ee"
+        ]
+      }
+    ]
+  },
+  "voiceLicenseAccepted": true,
+  "characterId": "rinon",
+  "outputPath": "Character/rinon/reference/rinon_voicevox_metan_amaama.wav",
+  "outputSha256": "89ae4a7c49bb63a869bbc1c0f05b7b384c060804809d8ad07216832a24e10924",
+  "textSha256": "b29d0c01a89b40e73e02cced87609044ed2e3392ae931d36b3a6a182a42001b4",
+  "textLength": 49,
+  "audio": {
+    "channels": 1,
+    "sampleRate": 48000,
+    "frames": 403968,
+    "sampleWidth": 2,
+    "duration": 8.416
+  },
+  "adjustments": {
+    "speedScale": 1.02,
+    "pitchScale": 0.03,
+    "intonationScale": 1.02,
+    "volumeScale": 1.0,
+    "outputSamplingRate": 48000,
+    "prePhonemeLength": null,
+    "postPhonemeLength": null
+  },
+  "elapsed": 1.485,
+  "createdAt": 1780930746
+}

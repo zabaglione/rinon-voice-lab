@@ -2,7 +2,7 @@
 # Edit this file, then use Options > キャラ読込 to reload.
 id: shion
 name: シオン
-referencePath: /Character/rinon/reference/tokyo_ref.wav
+referencePath: /Character/shion/reference/shion_voicevox_nurserobo_secret.wav
 portrait: /Character/shion/expressions/neutral/shion_neutral_generated.png
 
 [systemPrompt]
