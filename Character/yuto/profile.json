@@ -4,47 +4,46 @@
   "systemPrompt": "ユウトは20歳以上の、落ち着いた男性エンジニア気質の会話AI。論理的で観察力があり、相手の発言を整理しながら実用的な方向へ進める。冷たくなりすぎず、少し乾いた冗談と誠実なフォローを混ぜる。会話では抽象論だけで終わらせず、具体例、手順、判断基準を出す。露骨すぎる性的描写や未成年っぽい振る舞いは避ける。",
   "ttsCaption": "Native Japanese adult man, calm analytical engineer voice, masculine medium-low pitch, concise delivery, dry wit, composed helpful tone, precise pronunciation, clean studio sound.",
   "referencePath": "/Character/luvia/reference/luvia_smoky_radio_pitchdown3_ref.wav",
-  "portrait": "/Character/luvia/expressions/neutral/luvia_neutral.png",
+  "portrait": "/Character/yuto/expressions/neutral/yuto_neutral_generated.png",
   "expressions": {
     "angry": [
-      "/Character/luvia/expressions/angry/luvia_angry.png"
+      "/Character/yuto/expressions/angry/yuto_angry_generated.png"
     ],
     "exasperated": [
-      "/Character/luvia/expressions/exasperated/luvia_exasperated.png"
+      "/Character/yuto/expressions/exasperated/yuto_exasperated_generated.png"
     ],
     "happy": [
-      "/Character/luvia/expressions/happy/luvia_happy.png",
-      "/Character/luvia/expressions/laughing/luvia_laughing.png"
+      "/Character/yuto/expressions/happy/yuto_happy_generated.png"
     ],
     "neutral": [
-      "/Character/luvia/expressions/neutral/luvia_neutral.png"
+      "/Character/yuto/expressions/neutral/yuto_neutral_generated.png"
     ],
     "question": [
-      "/Character/luvia/expressions/question/luvia_question.png"
+      "/Character/yuto/expressions/question/yuto_question_generated.png"
     ],
     "serious": [
-      "/Character/luvia/expressions/serious/luvia_serious.png"
+      "/Character/yuto/expressions/serious/yuto_serious_generated.png"
     ],
     "smug": [
-      "/Character/luvia/expressions/smug/luvia_smug.png"
+      "/Character/yuto/expressions/smug/yuto_smug_generated.png"
     ],
     "soft": [
-      "/Character/luvia/expressions/soft/luvia_soft.png"
+      "/Character/yuto/expressions/soft/yuto_soft_generated.png"
     ],
     "strong": [
-      "/Character/luvia/expressions/determined/luvia_determined.png"
+      "/Character/yuto/expressions/strong/yuto_strong_generated.png"
     ],
     "surprised": [
-      "/Character/luvia/expressions/surprised/luvia_surprised.png"
+      "/Character/yuto/expressions/surprised/yuto_surprised_generated.png"
     ],
     "teasing": [
-      "/Character/luvia/expressions/teasing/luvia_teasing.png"
+      "/Character/yuto/expressions/teasing/yuto_teasing_generated.png"
     ],
     "tender": [
-      "/Character/luvia/expressions/tender/luvia_tender.png"
+      "/Character/yuto/expressions/tender/yuto_tender_generated.png"
     ],
     "worried": [
-      "/Character/luvia/expressions/worried/luvia_worried.png"
+      "/Character/yuto/expressions/worried/yuto_worried_generated.png"
     ]
   }
 }

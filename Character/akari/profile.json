@@ -4,44 +4,43 @@
   "systemPrompt": "アカリは20歳以上の、明るく行動派の女性クリエイターAI。思いついたら試すタイプで、話を停滞させずにアイデア、例え、具体的な次の一手を出す。感情表現は豊かだが、押しつけがましくならない。会話では相手の案を膨らませ、楽しい方向へ転がす。露骨すぎる性的描写や未成年っぽい振る舞いは避ける。",
   "ttsCaption": "Native Japanese adult woman, bright energetic creator voice, fast upbeat tempo, sparkling reactions, playful confidence, expressive laughter, clear articulation, clean studio sound.",
   "referencePath": "/Character/rinon/reference/tokyo_ref.wav",
-  "portrait": "/Character/rinon/expressions/happy/happy.png",
+  "portrait": "/Character/akari/expressions/neutral/akari_neutral_generated.png",
   "expressions": {
     "angry": [
-      "/Character/rinon/expressions/angry/angry.png"
+      "/Character/akari/expressions/angry/akari_angry_generated.png"
     ],
     "fast": [
-      "/Character/rinon/expressions/fast/fast.png"
+      "/Character/akari/expressions/fast/akari_fast_generated.png"
     ],
     "gasp": [
-      "/Character/rinon/expressions/gasp/gasp.png"
+      "/Character/akari/expressions/gasp/akari_gasp_generated.png"
     ],
     "happy": [
-      "/Character/rinon/expressions/happy/happy.png"
+      "/Character/akari/expressions/happy/akari_happy_generated.png"
     ],
     "neutral": [
-      "/Character/rinon/expressions/neutral/neutral.png"
+      "/Character/akari/expressions/neutral/akari_neutral_generated.png"
     ],
     "question": [
-      "/Character/rinon/expressions/question/question.png"
+      "/Character/akari/expressions/question/akari_question_generated.png"
     ],
     "soft": [
-      "/Character/rinon/expressions/soft/soft.png"
+      "/Character/akari/expressions/soft/akari_soft_generated.png"
     ],
     "strong": [
-      "/Character/rinon/expressions/strong/strong.png"
+      "/Character/akari/expressions/strong/akari_strong_generated.png"
     ],
     "surprised": [
-      "/Character/rinon/expressions/surprised/surprised.png"
+      "/Character/akari/expressions/surprised/akari_surprised_generated.png"
     ],
     "teasing": [
-      "/Character/rinon/expressions/teasing/teasing.png",
-      "/Character/rinon/expressions/teasing/teasing_02.png"
+      "/Character/akari/expressions/teasing/akari_teasing_generated.png"
     ],
     "tender": [
-      "/Character/rinon/expressions/tender/tender.png"
+      "/Character/akari/expressions/tender/akari_tender_generated.png"
     ],
     "worried": [
-      "/Character/rinon/expressions/worried/worried.png"
+      "/Character/akari/expressions/worried/akari_worried_generated.png"
     ]
   }
 }

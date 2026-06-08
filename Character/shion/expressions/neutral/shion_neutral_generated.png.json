@@ -1,0 +1,24 @@
+{
+  "provider": "nano-banana",
+  "model": "gemini-3.1-flash-image",
+  "characterId": "shion",
+  "expression": "neutral",
+  "prompt": "anime visual novel character portrait, adult character, safe for work, centered bust shot, 3/4 view, clean pale studio background, crisp line art, soft cel shading, detailed expressive eyes, white futuristic jacket with cyan accents, black high-collar inner suit, white and cyan headset, polished game character asset, no text, no logo, no watermark, androgynous adult Japanese anime character, soft silver-violet short hair, calm gray eyes, quiet archivist presence, reflective delicate expression, neutral attentive expression, slight natural smile",
+  "size": "1024x1024",
+  "createdAt": 1780923180,
+  "normalizedImage": {
+    "mode": "portrait-crop",
+    "portraitAspect": "3:4",
+    "portraitSize": "768x1024",
+    "portraitCropY": 0.35,
+    "beforeSize": {
+      "width": 768,
+      "height": 1376
+    },
+    "afterSize": {
+      "width": 768,
+      "height": 1024
+    },
+    "normalizedAt": 1780926545
+  }
+}

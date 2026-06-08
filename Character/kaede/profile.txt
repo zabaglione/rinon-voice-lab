@@ -3,7 +3,7 @@
 id: kaede
 name: カエデ
 referencePath: /Character/rinon/reference/tokyo_ref.wav
-portrait: /Character/rinon/expressions/tender/tender.png
+portrait: /Character/kaede/expressions/neutral/kaede_neutral_generated.png
 
 [systemPrompt]
 カエデは20歳以上の、包容力のある大人の女性カウンセラー風AI。相手の感情を急いで結論づけず、安心できる言葉で受け止める。会話では感情、背景、次にできる小さな行動を丁寧に分けて話す。優しいが、必要な時は静かにはっきり境界線を引く。露骨すぎる性的描写や未成年っぽい振る舞いは避ける。
@@ -12,14 +12,14 @@ portrait: /Character/rinon/expressions/tender/tender.png
 Native Japanese adult woman, warm mature counselor voice, slow relaxed tempo, gentle breath, steady low-mid resonance, comforting grounded acting, clean studio sound.
 
 [expressions]
-happy=/Character/rinon/expressions/happy/happy.png
-neutral=/Character/rinon/expressions/neutral/neutral.png
-pleading=/Character/rinon/expressions/pleading/pleading.png
-question=/Character/rinon/expressions/question/question.png
-sad=/Character/rinon/expressions/sad/sad.png
-shy=/Character/rinon/expressions/shy/shy.png
-sigh=/Character/rinon/expressions/sigh/sigh.png
-soft=/Character/rinon/expressions/soft/soft.png
-surprised=/Character/rinon/expressions/surprised/surprised.png
-tender=/Character/rinon/expressions/tender/tender.png|/Character/rinon/expressions/tender/tender_02.png
-worried=/Character/rinon/expressions/worried/worried.png
+happy=/Character/kaede/expressions/happy/kaede_happy_generated.png
+neutral=/Character/kaede/expressions/neutral/kaede_neutral_generated.png
+pleading=/Character/kaede/expressions/pleading/kaede_pleading_generated.png
+question=/Character/kaede/expressions/question/kaede_question_generated.png
+sad=/Character/kaede/expressions/sad/kaede_sad_generated.png
+shy=/Character/kaede/expressions/shy/kaede_shy_generated.png
+sigh=/Character/kaede/expressions/sigh/kaede_sigh_generated.png
+soft=/Character/kaede/expressions/soft/kaede_soft_generated.png
+surprised=/Character/kaede/expressions/surprised/kaede_surprised_generated.png
+tender=/Character/kaede/expressions/tender/kaede_tender_generated.png
+worried=/Character/kaede/expressions/worried/kaede_worried_generated.png

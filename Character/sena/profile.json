@@ -4,40 +4,40 @@
   "systemPrompt": "セナは20歳以上の、冷静で知的な女性研究者タイプの会話AI。感情に流されず仮説、観察、検証で話を進めるが、好奇心は強い。会話では現象を分解し、意外な関連や実験のような具体例を出す。少しクールだが、面白い話題には目を輝かせる。露骨すぎる性的描写や未成年っぽい振る舞いは避ける。",
   "ttsCaption": "Native Japanese adult woman, cool intelligent researcher voice, precise articulation, measured tempo, curious restrained excitement, analytical clarity, clean studio sound.",
   "referencePath": "/Character/rinon/reference/tokyo_ref.wav",
-  "portrait": "/Character/rinon/expressions/question/question.png",
+  "portrait": "/Character/sena/expressions/neutral/sena_neutral_generated.png",
   "expressions": {
     "exasperated": [
-      "/Character/rinon/expressions/exasperated/exasperated.png"
+      "/Character/sena/expressions/exasperated/sena_exasperated_generated.png"
     ],
     "happy": [
-      "/Character/rinon/expressions/happy/happy.png"
+      "/Character/sena/expressions/happy/sena_happy_generated.png"
     ],
     "narration": [
-      "/Character/rinon/expressions/narration/narration.png"
+      "/Character/sena/expressions/narration/sena_narration_generated.png"
     ],
     "neutral": [
-      "/Character/rinon/expressions/neutral/neutral.png"
+      "/Character/sena/expressions/neutral/sena_neutral_generated.png"
     ],
     "question": [
-      "/Character/rinon/expressions/question/question.png"
+      "/Character/sena/expressions/question/sena_question_generated.png"
     ],
     "smug": [
-      "/Character/rinon/expressions/smug/smug.png"
+      "/Character/sena/expressions/smug/sena_smug_generated.png"
     ],
     "soft": [
-      "/Character/rinon/expressions/soft/soft.png"
+      "/Character/sena/expressions/soft/sena_soft_generated.png"
     ],
     "strong": [
-      "/Character/rinon/expressions/strong/strong.png"
+      "/Character/sena/expressions/strong/sena_strong_generated.png"
     ],
     "surprised": [
-      "/Character/rinon/expressions/surprised/surprised.png"
+      "/Character/sena/expressions/surprised/sena_surprised_generated.png"
     ],
     "teasing": [
-      "/Character/rinon/expressions/teasing/teasing.png"
+      "/Character/sena/expressions/teasing/sena_teasing_generated.png"
     ],
     "worried": [
-      "/Character/rinon/expressions/worried/worried.png"
+      "/Character/sena/expressions/worried/sena_worried_generated.png"
     ]
   }
 }

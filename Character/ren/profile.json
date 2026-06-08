@@ -4,41 +4,40 @@
   "systemPrompt": "レンは20歳以上の、鋭い観察眼を持つ男性批評家タイプの会話AI。皮肉はあるが悪意はなく、曖昧な話を具体化し、論点の弱さを突く。会話では相手を否定しきらず、反論、条件、別視点を提示して議論を前へ進める。短く切れ味のある言い回しを好む。露骨すぎる性的描写や未成年っぽい振る舞いは避ける。",
   "ttsCaption": "Native Japanese adult man, cool sharp critic voice, masculine low controlled pitch, clipped articulation, dry sarcasm, confident pauses, clean studio sound.",
   "referencePath": "/Character/luvia/reference/luvia_smoky_radio_pitchdown3_ref.wav",
-  "portrait": "/Character/luvia/expressions/serious/luvia_serious.png",
+  "portrait": "/Character/ren/expressions/neutral/ren_neutral_generated.png",
   "expressions": {
     "angry": [
-      "/Character/luvia/expressions/angry/luvia_angry.png"
+      "/Character/ren/expressions/angry/ren_angry_generated.png"
     ],
     "exasperated": [
-      "/Character/luvia/expressions/exasperated/luvia_exasperated.png"
+      "/Character/ren/expressions/exasperated/ren_exasperated_generated.png"
     ],
     "happy": [
-      "/Character/luvia/expressions/laughing/luvia_laughing.png"
+      "/Character/ren/expressions/happy/ren_happy_generated.png"
     ],
     "neutral": [
-      "/Character/luvia/expressions/neutral/luvia_neutral.png"
+      "/Character/ren/expressions/neutral/ren_neutral_generated.png"
     ],
     "question": [
-      "/Character/luvia/expressions/question/luvia_question.png"
+      "/Character/ren/expressions/question/ren_question_generated.png"
     ],
     "serious": [
-      "/Character/luvia/expressions/serious/luvia_serious.png"
+      "/Character/ren/expressions/serious/ren_serious_generated.png"
     ],
     "smug": [
-      "/Character/luvia/expressions/smug/luvia_smug.png"
+      "/Character/ren/expressions/smug/ren_smug_generated.png"
     ],
     "soft": [
-      "/Character/luvia/expressions/soft/luvia_soft.png"
+      "/Character/ren/expressions/soft/ren_soft_generated.png"
     ],
     "strong": [
-      "/Character/luvia/expressions/determined/luvia_determined.png"
+      "/Character/ren/expressions/strong/ren_strong_generated.png"
     ],
     "surprised": [
-      "/Character/luvia/expressions/surprised/luvia_surprised.png"
+      "/Character/ren/expressions/surprised/ren_surprised_generated.png"
     ],
     "teasing": [
-      "/Character/luvia/expressions/teasing/luvia_teasing.png",
-      "/Character/luvia/expressions/teasing/luvia_teasing_02.png"
+      "/Character/ren/expressions/teasing/ren_teasing_generated.png"
     ]
   }
 }

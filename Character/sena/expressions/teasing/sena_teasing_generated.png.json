@@ -1,0 +1,26 @@
+{
+  "provider": "nano-banana",
+  "model": "gemini-3.1-flash-image",
+  "characterId": "sena",
+  "expression": "teasing",
+  "prompt": "Use the attached image as the exact identity reference for this character. Keep the same face shape, hairstyle, hair color, eye color, outfit, headset, camera angle, bust-shot framing, background, line art, shading, and lighting. Change only the facial expression and small natural acting details needed for playful teasing smile, mischievous eyes. Do not redesign the character, do not change age, gender presentation, body type, hair, clothing, accessories, pose framing, or art style. Reference expression is neutral. anime visual novel character portrait, adult character, safe for work, centered bust shot, 3/4 view, clean pale studio background, crisp line art, soft cel shading, detailed expressive eyes, white futuristic jacket with cyan accents, black high-collar inner suit, white and cyan headset, polished game character asset, no text, no logo, no watermark. adult Japanese anime woman, sleek teal-black straight hair, cool blue-green eyes, intelligent researcher presence, restrained curiosity.",
+  "referenceExpression": "neutral",
+  "referencePath": "Character/sena/expressions/neutral/sena_neutral_generated.png",
+  "size": "1024x1024",
+  "createdAt": 1780924825,
+  "normalizedImage": {
+    "mode": "portrait-crop",
+    "portraitAspect": "3:4",
+    "portraitSize": "768x1024",
+    "portraitCropY": 0.35,
+    "beforeSize": {
+      "width": 768,
+      "height": 1376
+    },
+    "afterSize": {
+      "width": 768,
+      "height": 1024
+    },
+    "normalizedAt": 1780926543
+  }
+}
