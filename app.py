@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import ipaddress
 import json
 import mimetypes
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -18,8 +20,9 @@ import warnings
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from html import unescape as html_unescape
+from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -48,6 +51,9 @@ LM_COMPACT_CONTEXT_LIMIT = int(os.environ.get("LM_COMPACT_CONTEXT_LIMIT", "4200"
 LM_RECENT_MESSAGE_COUNT = int(os.environ.get("LM_RECENT_MESSAGE_COUNT", "12"))
 LM_SUMMARY_CHAR_LIMIT = int(os.environ.get("LM_SUMMARY_CHAR_LIMIT", "1400"))
 WEB_SEARCH_TIMEOUT = int(os.environ.get("WEB_SEARCH_TIMEOUT", "12"))
+WEB_FETCH_MAX_BYTES = int(os.environ.get("WEB_FETCH_MAX_BYTES", "650000"))
+WEB_PAGE_EXCERPT_LIMIT = int(os.environ.get("WEB_PAGE_EXCERPT_LIMIT", "1800"))
+WEB_PAGE_MIN_EXCERPT_CHARS = int(os.environ.get("WEB_PAGE_MIN_EXCERPT_CHARS", "120"))
 
 IRODORI_CHECKPOINT = os.environ.get(
     "IRODORI_CHECKPOINT", "Aratako/Irodori-TTS-600M-v3-VoiceDesign"
@@ -1683,7 +1689,7 @@ def web_search(query: str, limit: int = 3) -> list[dict[str, str]]:
         )
         snippet = strip_html(snippet_match.group("snippet")) if snippet_match else ""
         if title and href:
-            results.append({"title": title, "url": href, "snippet": snippet})
+            results.append({"title": title, "url": href, "snippet": snippet, "sourceType": "search"})
         if len(results) >= limit:
             break
     return results
@@ -1704,6 +1710,418 @@ def extract_web_urls(text: str, limit: int = 2) -> list[str]:
         if len(urls) >= limit:
             break
     return urls
+
+
+def public_ip_address(value: str) -> bool:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return bool(address.is_global and not address.is_multicast)
+
+
+def public_web_url(url: str) -> bool:
+    parsed = urlparse(str(url or "").strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    host = parsed.hostname.strip().lower()
+    if host in {"localhost"} or host.endswith(".localhost"):
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+        return bool(address.is_global and not address.is_multicast)
+    except ValueError:
+        pass
+    try:
+        infos = socket.getaddrinfo(
+            host,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except OSError:
+        return False
+    addresses = {str(item[4][0]) for item in infos if item and item[4]}
+    return bool(addresses) and all(public_ip_address(address) for address in addresses)
+
+
+class PublicWebRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        if not public_web_url(newurl):
+            raise urllib.error.HTTPError(newurl, 403, "redirect target is not allowed", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def web_open_public_url(url: str) -> tuple[str, str, bytes]:
+    if not public_web_url(url):
+        raise ValueError("URL is not allowed")
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.4",
+            "Accept-Language": "ja,en-US;q=0.8,en;q=0.6",
+        },
+    )
+    opener = urllib.request.build_opener(PublicWebRedirectHandler)
+    with opener.open(request, timeout=WEB_SEARCH_TIMEOUT) as res:
+        final_url = res.geturl()
+        if not public_web_url(final_url):
+            raise ValueError("redirect target is not allowed")
+        content_type = res.headers.get("Content-Type", "")
+        raw = res.read(WEB_FETCH_MAX_BYTES + 1)
+    return final_url, content_type, raw[:WEB_FETCH_MAX_BYTES]
+
+
+def response_charset(content_type: str) -> str:
+    match = re.search(r"charset=([^;\s]+)", content_type or "", re.IGNORECASE)
+    return match.group(1).strip("\"'") if match else "utf-8"
+
+
+def html_attrs(tag: str) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for match in re.finditer(r"([:\w-]+)\s*=\s*(['\"])(.*?)\2", tag, re.DOTALL):
+        attrs[match.group(1).lower()] = html_unescape(match.group(3)).strip()
+    return attrs
+
+
+def html_meta_map(html: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for match in re.finditer(r"<meta\b[^>]*>", html, re.IGNORECASE | re.DOTALL):
+        attrs = html_attrs(match.group(0))
+        key = str(attrs.get("name") or attrs.get("property") or "").strip().lower()
+        content = str(attrs.get("content") or "").strip()
+        if key and content and key not in values:
+            values[key] = strip_html(content)
+    return values
+
+
+def first_text_value(*values: object) -> str:
+    for value in values:
+        if isinstance(value, list):
+            nested = first_text_value(*value)
+            if nested:
+                return nested
+        elif isinstance(value, dict):
+            nested = first_text_value(value.get("name"), value.get("text"))
+            if nested:
+                return nested
+        else:
+            text = re.sub(r"\s+", " ", str(value or "")).strip()
+            if text:
+                return text
+    return ""
+
+
+def walk_json_objects(value: object) -> list[dict]:
+    found: list[dict] = []
+    if isinstance(value, dict):
+        found.append(value)
+        graph = value.get("@graph")
+        if isinstance(graph, list):
+            for item in graph:
+                found.extend(walk_json_objects(item))
+    elif isinstance(value, list):
+        for item in value:
+            found.extend(walk_json_objects(item))
+    return found
+
+
+def json_ld_article(html: str) -> dict[str, str]:
+    best: dict[str, str] = {}
+    for match in re.finditer(
+        r"<script\b[^>]*type=['\"][^'\"]*ld\+json[^'\"]*['\"][^>]*>(?P<body>.*?)</script>",
+        html,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        body = html_unescape(match.group("body")).strip()
+        if not body:
+            continue
+        try:
+            payload = json.loads(body)
+        except Exception:
+            continue
+        for item in walk_json_objects(payload):
+            raw_type = item.get("@type") or item.get("type")
+            types = raw_type if isinstance(raw_type, list) else [raw_type]
+            normalized_types = {str(kind).lower() for kind in types if kind}
+            if not normalized_types.intersection({"article", "newsarticle", "blogposting", "reportagenewsarticle"}):
+                continue
+            candidate = {
+                "title": first_text_value(item.get("headline"), item.get("name")),
+                "summary": first_text_value(item.get("description")),
+                "published": first_text_value(item.get("datePublished"), item.get("dateModified")),
+                "article": first_text_value(item.get("articleBody")),
+            }
+            score = len(candidate.get("article", "")) + len(candidate.get("summary", "")) + len(candidate.get("title", ""))
+            best_score = len(best.get("article", "")) + len(best.get("summary", "")) + len(best.get("title", ""))
+            if score > best_score:
+                best = {key: value for key, value in candidate.items() if value}
+    return best
+
+
+def remove_noisy_html(html: str) -> str:
+    cleaned = re.sub(r"(?is)<(script|style|noscript|svg|canvas)\b.*?</\1>", " ", html)
+    cleaned = re.sub(r"(?is)<(nav|header|footer|aside)\b.*?</\1>", " ", cleaned)
+    noisy = r"(ad|ads|advert|banner|breadcrumb|cookie|footer|header|menu|nav|pager|related|recommend|share|social|sponsor)"
+    for tag in ("div", "section", "aside", "nav", "ul"):
+        cleaned = re.sub(
+            rf"(?is)<{tag}\b[^>]*(?:class|id)=['\"][^'\"]*{noisy}[^'\"]*['\"][^>]*>.*?</{tag}>",
+            " ",
+            cleaned,
+        )
+    return cleaned
+
+
+SEMANTIC_TEXT_TAGS = {"article", "main", "section", "div", "p", "h1", "h2", "h3", "span", "li", "figcaption"}
+SEMANTIC_TITLE_ATTR_RE = re.compile(r"(^|[-_\s:])(title|headline|heading|subject|ttl)($|[-_\s:])", re.IGNORECASE)
+SEMANTIC_BODY_ATTR_RE = re.compile(
+    r"(^|[-_\s:])("
+    r"articlebody|article[-_\s:]?(body|content|text)|"
+    r"entrybody|entry[-_\s:]?(body|content|text)|"
+    r"post[-_\s:]?(body|content|text)|"
+    r"story[-_\s:]?(body|content|text)|"
+    r"news[-_\s:]?(body|content|text)|"
+    r"body|description|summary"
+    r")($|[-_\s:])",
+    re.IGNORECASE,
+)
+
+
+def valid_html_text_block(text: str, min_length: int = 12) -> bool:
+    if len(text) < min_length:
+        return False
+    if re.fullmatch(r"[\d\s.,:;()（）-]+", text):
+        return False
+    bracket_count = text.count("(") + text.count(")") + text.count("（") + text.count("）")
+    if bracket_count >= 6 and not re.search(r"[。.!?！？]", text):
+        return False
+    return True
+
+
+def add_html_text_block(blocks: list[str], seen: set[str], value: str, min_length: int = 12) -> None:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not valid_html_text_block(text, min_length=min_length) or text in seen:
+        return
+    seen.add(text)
+    blocks.append(text)
+
+
+def semantic_text_hint(attrs: list[tuple[str, str | None]]) -> str:
+    values: list[str] = []
+    for key, value in attrs:
+        key = str(key or "").lower()
+        if key in {"class", "id", "itemprop", "property", "name", "data-testid", "data-test"}:
+            values.append(str(value or ""))
+    attr_text = " ".join(values)
+    compact_attr_text = re.sub(r"(?<=[a-z])(?=[A-Z])", "-", attr_text)
+    if SEMANTIC_TITLE_ATTR_RE.search(compact_attr_text):
+        return "title"
+    if SEMANTIC_BODY_ATTR_RE.search(compact_attr_text):
+        return "body"
+    return ""
+
+
+class SemanticTextBlockParser(HTMLParser):
+    def __init__(self, allowed_hints: set[str] | None = None) -> None:
+        super().__init__(convert_charrefs=True)
+        self.allowed_hints = allowed_hints
+        self.collectors: list[dict] = []
+        self.blocks: list[str] = []
+        self.seen: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        for collector in self.collectors:
+            collector["depth"] += 1
+        hint = semantic_text_hint(attrs)
+        if tag in SEMANTIC_TEXT_TAGS and hint and (self.allowed_hints is None or hint in self.allowed_hints):
+            if not self.collectors:
+                self.collectors.append({"depth": 1, "parts": [], "hint": hint})
+
+    def handle_data(self, data: str) -> None:
+        if not data or not self.collectors:
+            return
+        for collector in self.collectors:
+            collector["parts"].append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.collectors:
+            return
+        for collector in self.collectors:
+            collector["depth"] -= 1
+        while self.collectors and self.collectors[-1]["depth"] <= 0:
+            collector = self.collectors.pop()
+            min_length = 4 if collector.get("hint") == "title" else 12
+            add_html_text_block(self.blocks, self.seen, " ".join(collector["parts"]), min_length=min_length)
+
+    def finish(self) -> None:
+        while self.collectors:
+            collector = self.collectors.pop()
+            min_length = 4 if collector.get("hint") == "title" else 12
+            add_html_text_block(self.blocks, self.seen, " ".join(collector["parts"]), min_length=min_length)
+
+
+def semantic_html_text_blocks(html: str, allowed_hints: set[str] | None = None) -> list[str]:
+    parser = SemanticTextBlockParser(allowed_hints=allowed_hints)
+    try:
+        parser.feed(html)
+        parser.close()
+    except Exception:
+        pass
+    parser.finish()
+    return parser.blocks
+
+
+def preferred_html_text_blocks(html: str) -> list[str]:
+    body_blocks = semantic_html_text_blocks(html, allowed_hints={"body"})
+    if body_blocks:
+        return body_blocks
+    return html_text_blocks(html)
+
+
+def html_text_blocks(html: str) -> list[str]:
+    blocks: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"(?is)<(h1|h2|h3|p|li|figcaption)\b[^>]*>(?P<body>.*?)</\1>", html):
+        add_html_text_block(blocks, seen, strip_html(match.group("body")))
+    return blocks
+
+
+def html_block_text(html: str) -> str:
+    source = remove_noisy_html(html)
+    for tag in ("article", "main"):
+        match = re.search(rf"(?is)<{tag}\b[^>]*>(?P<body>.*?)</{tag}>", source)
+        if match:
+            blocks = preferred_html_text_blocks(match.group("body"))
+            text = " ".join(blocks) if blocks else strip_html(match.group("body"))
+            if len(text) >= WEB_PAGE_MIN_EXCERPT_CHARS:
+                return text
+    body_match = re.search(r"(?is)<body\b[^>]*>(?P<body>.*?)</body>", source)
+    body = body_match.group("body") if body_match else source
+    blocks = preferred_html_text_blocks(body)
+    return " ".join(blocks) if blocks else strip_html(body)
+
+
+def page_title(html: str, meta: dict[str, str], fallback: str) -> str:
+    title_match = re.search(r"(?is)<title\b[^>]*>(?P<title>.*?)</title>", html)
+    semantic_titles = semantic_html_text_blocks(remove_noisy_html(html), allowed_hints={"title"})
+    return first_text_value(
+        meta.get("og:title"),
+        meta.get("twitter:title"),
+        semantic_titles[:2],
+        strip_html(title_match.group("title")) if title_match else "",
+        fallback,
+    )
+
+
+def classify_embed_url(url: str) -> str:
+    host = (urlparse(url).hostname or "").lower()
+    if "youtube" in host or "youtu.be" in host:
+        return "youtube"
+    if "twitter" in host or host.endswith("x.com"):
+        return "x"
+    if "instagram" in host:
+        return "instagram"
+    if "tiktok" in host:
+        return "tiktok"
+    if "vimeo" in host:
+        return "vimeo"
+    return "embed"
+
+
+def embedded_references(html: str, base_url: str, limit: int = 8) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+
+    def add(raw_url: str, ref_type: str | None = None) -> None:
+        url = urljoin(base_url, html_unescape(str(raw_url or "")).strip())
+        if not url or url in {item["url"] for item in refs}:
+            return
+        parsed = urlparse(url)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            refs.append({"type": ref_type or classify_embed_url(url), "url": url})
+
+    for match in re.finditer(r"<link\b[^>]*\brel=['\"][^'\"]*\bnext\b[^'\"]*['\"][^>]*>", html, re.IGNORECASE | re.DOTALL):
+        attrs = html_attrs(match.group(0))
+        add(attrs.get("href", ""), "next")
+        if len(refs) >= limit:
+            return refs
+
+    for match in re.finditer(r"<iframe\b[^>]*\bsrc=['\"]([^'\"]+)['\"][^>]*>", html, re.IGNORECASE | re.DOTALL):
+        add(match.group(1))
+        if len(refs) >= limit:
+            return refs
+    for match in re.finditer(r"<blockquote\b[^>]*\bcite=['\"]([^'\"]+)['\"][^>]*>", html, re.IGNORECASE | re.DOTALL):
+        add(match.group(1))
+        if len(refs) >= limit:
+            return refs
+    for match in re.finditer(r"<link\b[^>]*type=['\"]application/json\+oembed['\"][^>]*>", html, re.IGNORECASE | re.DOTALL):
+        attrs = html_attrs(match.group(0))
+        add(attrs.get("href", ""))
+        if len(refs) >= limit:
+            return refs
+    meta = html_meta_map(html)
+    for key in ("twitter:player", "og:video", "og:video:url"):
+        if key in meta:
+            add(meta[key])
+            if len(refs) >= limit:
+                return refs
+    return refs
+
+
+def web_fetch_page(url: str) -> dict:
+    final_url, content_type, raw = web_open_public_url(url)
+    if content_type and not re.search(r"(text/html|application/xhtml\+xml|text/plain)", content_type, re.IGNORECASE):
+        raise ValueError(f"Unsupported content type: {content_type or 'unknown'}")
+    text = raw.decode(response_charset(content_type), errors="replace")
+    if re.search(r"text/plain", content_type, re.IGNORECASE):
+        excerpt = compact_text(text, WEB_PAGE_EXCERPT_LIMIT)
+        return {
+            "title": final_url,
+            "url": final_url,
+            "snippet": excerpt,
+            "summary": "",
+            "published": "",
+            "embedded": [],
+            "sourceType": "page",
+        }
+    meta = html_meta_map(text)
+    article = json_ld_article(text)
+    title = first_text_value(article.get("title"), page_title(text, meta, final_url))
+    summary = first_text_value(
+        article.get("summary"),
+        meta.get("description"),
+        meta.get("og:description"),
+        meta.get("twitter:description"),
+    )
+    body_text = first_text_value(article.get("article"), html_block_text(text))
+    if summary and body_text and summary not in body_text[: max(len(summary) + 120, 300)]:
+        excerpt_source = "\n".join((summary, body_text))
+    else:
+        excerpt_source = body_text or summary
+    excerpt = compact_text(excerpt_source, WEB_PAGE_EXCERPT_LIMIT)
+    return {
+        "title": title,
+        "url": final_url,
+        "snippet": excerpt,
+        "summary": summary,
+        "published": first_text_value(article.get("published")),
+        "embedded": embedded_references(text, final_url),
+        "sourceType": "page",
+    }
+
+
+def web_fetch_pages(urls: list[str]) -> list[dict]:
+    results: list[dict] = []
+    for url in urls:
+        try:
+            results.append(web_fetch_page(url))
+        except Exception as exc:
+            results.append({"title": "Page fetch error", "url": url, "snippet": str(exc), "sourceType": "page-error"})
+    return results
+
+
+def usable_web_page_result(item: dict) -> bool:
+    return item.get("sourceType") == "page" and len(str(item.get("snippet") or "")) >= WEB_PAGE_MIN_EXCERPT_CHARS
 
 
 WEB_INTENT_TERMS = (
@@ -1773,19 +2191,56 @@ def build_continuous_web_query(user_text: str, history: list[dict[str, str]]) ->
     return re.sub(r"\s+", " ", str(user_text or "")).strip()
 
 
-def format_web_results(query: str, results: list[dict[str, str]]) -> str:
+def format_web_results(query: str, results: list[dict]) -> str:
     if not results:
         return ""
+    has_pages = any(str(item.get("sourceType") or "") in {"page", "page-error"} for item in results)
+    heading = (
+        f'Web page notes. Target: "{compact_text(query, 120)}"'
+        if has_pages
+        else f'Web search results. Query: "{compact_text(query, 120)}"'
+    )
     lines = [
-        f'Web検索結果です。検索語: "{compact_text(query, 120)}"',
-        "現在までの会話コンテキスト、キャラ設定、直前の発言を優先してください。",
-        "検索結果は補助情報として必要な場合だけ使い、検索結果にない事実は断定しないでください。",
+        heading,
+        "Prefer the current conversation, character settings, and the immediately previous message.",
+        "Use these notes only as supporting context. Do not state facts that are not supported here.",
     ]
     for index, item in enumerate(results, start=1):
+        source_type = str(item.get("sourceType") or "search")
+        if source_type == "page-error":
+            lines.append(
+                f"{index}. Page fetch failed\n"
+                f"URL: {item.get('url', '')}\n"
+                f"Reason: {compact_text(item.get('snippet', ''), 240)}"
+            )
+            continue
+        if source_type == "page":
+            parts = [
+                f"{index}. Page: {compact_text(item.get('title', ''), 120)}",
+                f"URL: {item.get('url', '')}",
+            ]
+            published = str(item.get("published") or "").strip()
+            if published:
+                parts.append(f"Published: {compact_text(published, 80)}")
+            summary = str(item.get("summary") or "").strip()
+            if summary:
+                parts.append(f"Summary: {compact_text(summary, 360)}")
+            parts.append(f"Excerpt: {compact_text(item.get('snippet', ''), 900)}")
+            embedded = item.get("embedded") if isinstance(item.get("embedded"), list) else []
+            if embedded:
+                refs = [
+                    f"- {compact_text(ref.get('type', 'ref'), 24)}: {compact_text(ref.get('url', ''), 180)}"
+                    for ref in embedded[:5]
+                    if isinstance(ref, dict) and ref.get("url")
+                ]
+                if refs:
+                    parts.append("Referenced embeds or next pages, not fetched:\n" + "\n".join(refs))
+            lines.append("\n".join(parts))
+            continue
         lines.append(
-            f"{index}. {compact_text(item.get('title', ''), 100)}\n"
+            f"{index}. Search result: {compact_text(item.get('title', ''), 100)}\n"
             f"URL: {item.get('url', '')}\n"
-            f"概要: {compact_text(item.get('snippet', ''), 180)}"
+            f"Snippet: {compact_text(item.get('snippet', ''), 220)}"
         )
     return "\n".join(lines)
 
@@ -2666,17 +3121,30 @@ class Handler(BaseHTTPRequestHandler):
                 for item in history
                 if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
             ]
-            search_results: list[dict[str, str]] = []
+            search_results: list[dict] = []
             web_query = ""
             web_context = existing_web_context
             if use_web_search:
                 web_query_source = web_topic or user_text
-                web_search_limit = 1 if extract_web_urls(web_query_source) else 3
-                web_query = build_continuous_web_query(web_query_source, raw_messages)
-                try:
-                    search_results = web_search(web_query, limit=web_search_limit)
-                except Exception as exc:
-                    search_results = [{"title": "検索エラー", "url": "", "snippet": str(exc)}]
+                direct_urls = extract_web_urls(web_query_source)
+                if direct_urls:
+                    web_query = " ".join(direct_urls)
+                    search_results = web_fetch_pages(direct_urls)
+                    if not any(usable_web_page_result(item) for item in search_results):
+                        try:
+                            search_results.extend(web_search(web_query, limit=1))
+                        except Exception as exc:
+                            search_results.append(
+                                {"title": "Search error", "url": "", "snippet": str(exc), "sourceType": "search-error"}
+                            )
+                else:
+                    web_query = build_continuous_web_query(web_query_source, raw_messages)
+                    try:
+                        search_results = web_search(web_query, limit=3)
+                    except Exception as exc:
+                        search_results = [
+                            {"title": "Search error", "url": "", "snippet": str(exc), "sourceType": "search-error"}
+                        ]
                 web_context = format_web_results(web_query, search_results)
             if web_context:
                 raw_messages.append(
