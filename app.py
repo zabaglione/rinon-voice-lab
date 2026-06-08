@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import ipaddress
 import json
 import mimetypes
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -18,8 +20,9 @@ import warnings
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from html import unescape as html_unescape
+from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -36,12 +39,21 @@ CHARACTER_ROOT = APP_ROOT / "Character"
 DEFAULT_IRODORI_ROOT = (APP_ROOT.parent / "Irodori-TTS").resolve()
 IRODORI_ROOT = Path(os.environ.get("IRODORI_ROOT", str(DEFAULT_IRODORI_ROOT))).resolve()
 LM_STUDIO_URL = os.environ.get("LM_STUDIO_URL", "http://127.0.0.1:1234/v1").rstrip("/")
+LM_STUDIO_BASE_URL = os.environ.get(
+    "LM_STUDIO_BASE_URL",
+    re.sub(r"/v1/?$", "", LM_STUDIO_URL),
+).rstrip("/")
 DEFAULT_MODEL = os.environ.get("LM_STUDIO_MODEL", "gemma-4-12b-it")
 DEFAULT_CONTEXT_LIMIT = int(os.environ.get("LM_STUDIO_CONTEXT_LIMIT", "8200"))
+DEFAULT_MAX_OUTPUT_TOKENS = int(os.environ.get("LM_STUDIO_MAX_OUTPUT_TOKENS", "0"))
+MAX_OUTPUT_TOKENS_LIMIT = int(os.environ.get("LM_STUDIO_MAX_OUTPUT_TOKENS_LIMIT", "4096"))
 LM_COMPACT_CONTEXT_LIMIT = int(os.environ.get("LM_COMPACT_CONTEXT_LIMIT", "4200"))
 LM_RECENT_MESSAGE_COUNT = int(os.environ.get("LM_RECENT_MESSAGE_COUNT", "12"))
 LM_SUMMARY_CHAR_LIMIT = int(os.environ.get("LM_SUMMARY_CHAR_LIMIT", "1400"))
 WEB_SEARCH_TIMEOUT = int(os.environ.get("WEB_SEARCH_TIMEOUT", "12"))
+WEB_FETCH_MAX_BYTES = int(os.environ.get("WEB_FETCH_MAX_BYTES", "650000"))
+WEB_PAGE_EXCERPT_LIMIT = int(os.environ.get("WEB_PAGE_EXCERPT_LIMIT", "1800"))
+WEB_PAGE_MIN_EXCERPT_CHARS = int(os.environ.get("WEB_PAGE_MIN_EXCERPT_CHARS", "120"))
 
 IRODORI_CHECKPOINT = os.environ.get(
     "IRODORI_CHECKPOINT", "Aratako/Irodori-TTS-600M-v3-VoiceDesign"
@@ -97,6 +109,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 Irodori_lock = threading.Lock()
 Irodori_module = None
 Emoji_items_cache = None
+LMStudio_model_cache: tuple[float, dict[str, dict]] = (0.0, {})
 Luvia_remote_ref_cache: dict[str, str] = {}
 External_speak_lock = threading.Lock()
 External_speak_events = deque(maxlen=80)
@@ -799,6 +812,7 @@ def save_session_profile(payload: dict) -> dict:
             "referencePath": str(settings.get("referencePath") or IRODORI_REF_WAV),
             "secondReferencePath": str(settings.get("secondReferencePath") or LUVIA_REF_WAV),
             "contextLimit": int(settings.get("contextLimit") or DEFAULT_CONTEXT_LIMIT),
+            "maxOutputTokens": sanitize_max_output_tokens(settings.get("maxOutputTokens")),
             "model": str(settings.get("model") or DEFAULT_MODEL),
             "steps": int(settings.get("steps") or 12),
             "speechRate": str(settings.get("speechRate") or "normal"),
@@ -1189,19 +1203,63 @@ def build_emoji_choice_prompt() -> str:
 
 
 def parse_lmstudio_reply(raw: str, allowed_emojis: set[str]) -> tuple[str, str]:
-    text = raw.strip()
-    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
-    if fenced:
-        text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
+    def decode_reply(value: str) -> tuple[str, str] | None:
+        try:
+            data = json.loads(value)
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
         reply = str(data.get("text") or data.get("reply") or "").strip()
         emoji = str(data.get("emoji") or "").strip()
-        if reply:
-            return reply, emoji if emoji in allowed_emojis else ""
-    except Exception:
-        pass
+        if not reply:
+            return None
+        return reply, emoji if emoji in allowed_emojis else ""
+
+    def json_object_candidates(value: str) -> list[str]:
+        candidates: list[str] = []
+        start = -1
+        depth = 0
+        in_string = False
+        escape = False
+        for index, char in enumerate(value):
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                if depth == 0:
+                    start = index
+                depth += 1
+            elif char == "}" and depth:
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    candidates.append(value[start : index + 1])
+                    start = -1
+        return candidates
+
+    text = raw.strip()
+    candidates = [text]
+    candidates.extend(match.group(1).strip() for match in re.finditer(r"```(?:json)?\s*(.*?)```", text, re.DOTALL))
+    candidates.extend(json_object_candidates(text))
+    for candidate in reversed(candidates):
+        parsed = decode_reply(candidate)
+        if parsed:
+            return parsed
     return raw.strip(), ""
+
+
+def strip_speaker_prefix(text: str, speaker: str) -> str:
+    name = str(speaker or "").strip()
+    if not name:
+        return str(text or "").strip()
+    return re.sub(rf"^\s*{re.escape(name)}\s*[:：]\s*", "", str(text or "")).strip()
 
 
 def strip_irodori_style_marks(text: str) -> str:
@@ -1281,6 +1339,192 @@ def reply_style_for_length(reply_length: str) -> tuple[str, int, int]:
     if mode == "short":
         return "返答は1から2文を基本にしてください。", 360, 3
     return "返答は3から5文くらいまで使って、自然な会話調で答えてください。", 720, 6
+
+
+def sanitize_max_output_tokens(value: object) -> int:
+    try:
+        tokens = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    if tokens <= 0:
+        return 0
+    return max(64, min(tokens, MAX_OUTPUT_TOKENS_LIMIT))
+
+
+def normalize_lmstudio_model_info(item: dict) -> dict:
+    model_id = str(item.get("key") or item.get("id") or "").strip()
+    quantization = item.get("quantization")
+    if isinstance(quantization, dict):
+        quantization_name = str(quantization.get("name") or "")
+        bits_per_weight = quantization.get("bits_per_weight")
+    else:
+        quantization_name = str(quantization or "")
+        bits_per_weight = None
+    loaded_context = int(item.get("loaded_context_length") or 0)
+    loaded_instances = item.get("loaded_instances") if isinstance(item.get("loaded_instances"), list) else []
+    for instance in loaded_instances:
+        if not isinstance(instance, dict):
+            continue
+        if instance.get("id") not in {None, "", model_id}:
+            continue
+        config = instance.get("config") if isinstance(instance.get("config"), dict) else {}
+        loaded_context = int(config.get("context_length") or loaded_context or 0)
+        break
+    max_context = int(item.get("max_context_length") or loaded_context or 0)
+    capabilities = item.get("capabilities")
+    reasoning_default = ""
+    reasoning_options: list[str] = []
+    if isinstance(capabilities, dict):
+        reasoning = capabilities.get("reasoning")
+        if isinstance(reasoning, dict):
+            reasoning_default = str(reasoning.get("default") or "")
+            allowed = reasoning.get("allowed_options")
+            if isinstance(allowed, list):
+                reasoning_options = [str(option) for option in allowed]
+    return {
+        "id": model_id,
+        "type": item.get("type"),
+        "architecture": item.get("architecture") or item.get("arch"),
+        "format": item.get("format") or item.get("compatibility_type"),
+        "quantization": quantization_name,
+        "bitsPerWeight": bits_per_weight,
+        "sizeBytes": item.get("size_bytes"),
+        "state": item.get("state") or ("loaded" if loaded_instances else "not-loaded"),
+        "maxContextLength": max_context,
+        "loadedContextLength": loaded_context or max_context,
+        "reasoningDefault": reasoning_default,
+        "reasoningOptions": reasoning_options,
+    }
+
+
+def get_lmstudio_model_info(force: bool = False) -> dict[str, dict]:
+    global LMStudio_model_cache
+    cached_at, cached = LMStudio_model_cache
+    if cached and not force and time.time() - cached_at < 15:
+        return cached
+    headers = {}
+    api_token = os.environ.get("LM_API_TOKEN", "").strip()
+    if api_token:
+        headers["Authorization"] = f"Bearer {api_token}"
+    for path in ("/api/v1/models", "/api/v0/models"):
+        try:
+            request = urllib.request.Request(f"{LM_STUDIO_BASE_URL}{path}", headers=headers)
+            with urllib.request.urlopen(request, timeout=3) as res:
+                data = json.loads(res.read().decode("utf-8"))
+            raw_models = data.get("models") if isinstance(data.get("models"), list) else data.get("data", [])
+            models = {
+                info["id"]: info
+                for info in (normalize_lmstudio_model_info(item) for item in raw_models if isinstance(item, dict))
+                if info.get("id")
+            }
+            if models:
+                LMStudio_model_cache = (time.time(), models)
+                return models
+        except Exception:
+            continue
+    return cached
+
+
+def lmstudio_model_detail(model: str | None) -> dict:
+    selected = str(model or DEFAULT_MODEL).strip()
+    return get_lmstudio_model_info().get(selected, {})
+
+
+def model_uses_reasoning_budget(model: str | None, model_info: dict | None = None) -> bool:
+    info = model_info or {}
+    options = {str(option).lower() for option in info.get("reasoningOptions", [])}
+    default = str(info.get("reasoningDefault") or "").lower()
+    if default and default != "off":
+        return True
+    if options - {"off"}:
+        return True
+    name = str(model or "").lower()
+    return any(
+        marker in name
+        for marker in (
+            "a4b-qat",
+            "gpt-oss",
+            "reasoning",
+            "thinking",
+            "deepseek-r1",
+        )
+    )
+
+
+def round_output_tokens(value: int, step: int = 512) -> int:
+    return min(MAX_OUTPUT_TOKENS_LIMIT, max(64, ((int(value) + step - 1) // step) * step))
+
+
+def messages_include_web_context(messages: list[dict[str, str]]) -> bool:
+    return any("Web検索結果" in str(item.get("content") or "") for item in messages)
+
+
+def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
+    text = "\n".join(f"{item.get('role', '')}: {item.get('content', '')}" for item in messages)
+    # Conservative fallback when LM Studio SDK tokenization is not available.
+    return len(text) + (len(messages) * 12)
+
+
+def max_output_token_limit(requested: object = 0) -> int:
+    explicit_tokens = sanitize_max_output_tokens(requested)
+    if explicit_tokens:
+        return explicit_tokens
+    env_tokens = sanitize_max_output_tokens(DEFAULT_MAX_OUTPUT_TOKENS)
+    if env_tokens:
+        return env_tokens
+    return MAX_OUTPUT_TOKENS_LIMIT
+
+
+def model_context_length(model_info: dict | None) -> int:
+    info = model_info or {}
+    try:
+        return int(info.get("loadedContextLength") or info.get("maxContextLength") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def context_limited_output_ceiling(
+    prompt_messages: list[dict[str, str]],
+    model_info: dict | None,
+    requested: object = 0,
+) -> int:
+    limit = max_output_token_limit(requested)
+    context_length = model_context_length(model_info)
+    if context_length <= 0:
+        return limit
+    prompt_tokens = estimate_prompt_tokens(prompt_messages)
+    safety_margin = max(256, min(2048, context_length // 64))
+    available = context_length - prompt_tokens - safety_margin
+    if available <= 0:
+        return 64
+    return max(64, min(limit, available))
+
+
+def resolve_max_output_tokens(
+    reply_length: str,
+    model: str | None,
+    base_tokens: int,
+    requested: object = 0,
+    auto_emoji: bool = False,
+    messages: list[dict[str, str]] | None = None,
+    prompt_messages: list[dict[str, str]] | None = None,
+    model_info: dict | None = None,
+) -> int:
+    ceiling = context_limited_output_ceiling(prompt_messages or messages or [], model_info, requested)
+    configured_tokens = sanitize_max_output_tokens(requested) or sanitize_max_output_tokens(DEFAULT_MAX_OUTPUT_TOKENS)
+    if configured_tokens:
+        return min(ceiling, configured_tokens)
+    if not model_uses_reasoning_budget(model, model_info):
+        return min(ceiling, base_tokens)
+    reasoning_tokens = base_tokens * 3
+    if messages and messages_include_web_context(messages):
+        reasoning_tokens += base_tokens
+    if auto_emoji:
+        reasoning_tokens += base_tokens
+    mode = str(reply_length or "normal").strip().lower()
+    if mode == "long":
+        reasoning_tokens += base_tokens
+    return min(ceiling, round_output_tokens(base_tokens + reasoning_tokens))
 
 
 def tts_duration_scale_for_rate(value: object) -> float:
@@ -1445,10 +1689,439 @@ def web_search(query: str, limit: int = 3) -> list[dict[str, str]]:
         )
         snippet = strip_html(snippet_match.group("snippet")) if snippet_match else ""
         if title and href:
-            results.append({"title": title, "url": href, "snippet": snippet})
+            results.append({"title": title, "url": href, "snippet": snippet, "sourceType": "search"})
         if len(results) >= limit:
             break
     return results
+
+
+WEB_URL_PATTERN = re.compile(r"https?://[^\s<>'\"）)]*", re.IGNORECASE)
+
+
+def extract_web_urls(text: str, limit: int = 2) -> list[str]:
+    urls: list[str] = []
+    for raw in WEB_URL_PATTERN.findall(str(text or "")):
+        url = raw.rstrip("。、，,.!?！？")
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        if url not in urls:
+            urls.append(url)
+        if len(urls) >= limit:
+            break
+    return urls
+
+
+def public_ip_address(value: str) -> bool:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return bool(address.is_global and not address.is_multicast)
+
+
+def public_web_url(url: str) -> bool:
+    parsed = urlparse(str(url or "").strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    host = parsed.hostname.strip().lower()
+    if host in {"localhost"} or host.endswith(".localhost"):
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+        return bool(address.is_global and not address.is_multicast)
+    except ValueError:
+        pass
+    try:
+        infos = socket.getaddrinfo(
+            host,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except OSError:
+        return False
+    addresses = {str(item[4][0]) for item in infos if item and item[4]}
+    return bool(addresses) and all(public_ip_address(address) for address in addresses)
+
+
+class PublicWebRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        if not public_web_url(newurl):
+            raise urllib.error.HTTPError(newurl, 403, "redirect target is not allowed", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def web_open_public_url(url: str) -> tuple[str, str, bytes]:
+    if not public_web_url(url):
+        raise ValueError("URL is not allowed")
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.4",
+            "Accept-Language": "ja,en-US;q=0.8,en;q=0.6",
+        },
+    )
+    opener = urllib.request.build_opener(PublicWebRedirectHandler)
+    with opener.open(request, timeout=WEB_SEARCH_TIMEOUT) as res:
+        final_url = res.geturl()
+        if not public_web_url(final_url):
+            raise ValueError("redirect target is not allowed")
+        content_type = res.headers.get("Content-Type", "")
+        raw = res.read(WEB_FETCH_MAX_BYTES + 1)
+    return final_url, content_type, raw[:WEB_FETCH_MAX_BYTES]
+
+
+def response_charset(content_type: str) -> str:
+    match = re.search(r"charset=([^;\s]+)", content_type or "", re.IGNORECASE)
+    return match.group(1).strip("\"'") if match else "utf-8"
+
+
+def html_attrs(tag: str) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for match in re.finditer(r"([:\w-]+)\s*=\s*(['\"])(.*?)\2", tag, re.DOTALL):
+        attrs[match.group(1).lower()] = html_unescape(match.group(3)).strip()
+    return attrs
+
+
+def html_meta_map(html: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for match in re.finditer(r"<meta\b[^>]*>", html, re.IGNORECASE | re.DOTALL):
+        attrs = html_attrs(match.group(0))
+        key = str(attrs.get("name") or attrs.get("property") or "").strip().lower()
+        content = str(attrs.get("content") or "").strip()
+        if key and content and key not in values:
+            values[key] = strip_html(content)
+    return values
+
+
+def first_text_value(*values: object) -> str:
+    for value in values:
+        if isinstance(value, list):
+            nested = first_text_value(*value)
+            if nested:
+                return nested
+        elif isinstance(value, dict):
+            nested = first_text_value(value.get("name"), value.get("text"))
+            if nested:
+                return nested
+        else:
+            text = re.sub(r"\s+", " ", str(value or "")).strip()
+            if text:
+                return text
+    return ""
+
+
+def walk_json_objects(value: object) -> list[dict]:
+    found: list[dict] = []
+    if isinstance(value, dict):
+        found.append(value)
+        graph = value.get("@graph")
+        if isinstance(graph, list):
+            for item in graph:
+                found.extend(walk_json_objects(item))
+    elif isinstance(value, list):
+        for item in value:
+            found.extend(walk_json_objects(item))
+    return found
+
+
+def json_ld_article(html: str) -> dict[str, str]:
+    best: dict[str, str] = {}
+    for match in re.finditer(
+        r"<script\b[^>]*type=['\"][^'\"]*ld\+json[^'\"]*['\"][^>]*>(?P<body>.*?)</script>",
+        html,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        body = html_unescape(match.group("body")).strip()
+        if not body:
+            continue
+        try:
+            payload = json.loads(body)
+        except Exception:
+            continue
+        for item in walk_json_objects(payload):
+            raw_type = item.get("@type") or item.get("type")
+            types = raw_type if isinstance(raw_type, list) else [raw_type]
+            normalized_types = {str(kind).lower() for kind in types if kind}
+            if not normalized_types.intersection({"article", "newsarticle", "blogposting", "reportagenewsarticle"}):
+                continue
+            candidate = {
+                "title": first_text_value(item.get("headline"), item.get("name")),
+                "summary": first_text_value(item.get("description")),
+                "published": first_text_value(item.get("datePublished"), item.get("dateModified")),
+                "article": first_text_value(item.get("articleBody")),
+            }
+            score = len(candidate.get("article", "")) + len(candidate.get("summary", "")) + len(candidate.get("title", ""))
+            best_score = len(best.get("article", "")) + len(best.get("summary", "")) + len(best.get("title", ""))
+            if score > best_score:
+                best = {key: value for key, value in candidate.items() if value}
+    return best
+
+
+def remove_noisy_html(html: str) -> str:
+    cleaned = re.sub(r"(?is)<(script|style|noscript|svg|canvas)\b.*?</\1>", " ", html)
+    cleaned = re.sub(r"(?is)<(nav|header|footer|aside)\b.*?</\1>", " ", cleaned)
+    noisy = r"(ad|ads|advert|banner|breadcrumb|cookie|footer|header|menu|nav|pager|related|recommend|share|social|sponsor)"
+    for tag in ("div", "section", "aside", "nav", "ul"):
+        cleaned = re.sub(
+            rf"(?is)<{tag}\b[^>]*(?:class|id)=['\"][^'\"]*{noisy}[^'\"]*['\"][^>]*>.*?</{tag}>",
+            " ",
+            cleaned,
+        )
+    return cleaned
+
+
+SEMANTIC_TEXT_TAGS = {"article", "main", "section", "div", "p", "h1", "h2", "h3", "span", "li", "figcaption"}
+SEMANTIC_TITLE_ATTR_RE = re.compile(r"(^|[-_\s:])(title|headline|heading|subject|ttl)($|[-_\s:])", re.IGNORECASE)
+SEMANTIC_BODY_ATTR_RE = re.compile(
+    r"(^|[-_\s:])("
+    r"articlebody|article[-_\s:]?(body|content|text)|"
+    r"entrybody|entry[-_\s:]?(body|content|text)|"
+    r"post[-_\s:]?(body|content|text)|"
+    r"story[-_\s:]?(body|content|text)|"
+    r"news[-_\s:]?(body|content|text)|"
+    r"body|description|summary"
+    r")($|[-_\s:])",
+    re.IGNORECASE,
+)
+
+
+def valid_html_text_block(text: str, min_length: int = 12) -> bool:
+    if len(text) < min_length:
+        return False
+    if re.fullmatch(r"[\d\s.,:;()（）-]+", text):
+        return False
+    bracket_count = text.count("(") + text.count(")") + text.count("（") + text.count("）")
+    if bracket_count >= 6 and not re.search(r"[。.!?！？]", text):
+        return False
+    return True
+
+
+def add_html_text_block(blocks: list[str], seen: set[str], value: str, min_length: int = 12) -> None:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not valid_html_text_block(text, min_length=min_length) or text in seen:
+        return
+    seen.add(text)
+    blocks.append(text)
+
+
+def semantic_text_hint(attrs: list[tuple[str, str | None]]) -> str:
+    values: list[str] = []
+    for key, value in attrs:
+        key = str(key or "").lower()
+        if key in {"class", "id", "itemprop", "property", "name", "data-testid", "data-test"}:
+            values.append(str(value or ""))
+    attr_text = " ".join(values)
+    compact_attr_text = re.sub(r"(?<=[a-z])(?=[A-Z])", "-", attr_text)
+    if SEMANTIC_TITLE_ATTR_RE.search(compact_attr_text):
+        return "title"
+    if SEMANTIC_BODY_ATTR_RE.search(compact_attr_text):
+        return "body"
+    return ""
+
+
+class SemanticTextBlockParser(HTMLParser):
+    def __init__(self, allowed_hints: set[str] | None = None) -> None:
+        super().__init__(convert_charrefs=True)
+        self.allowed_hints = allowed_hints
+        self.collectors: list[dict] = []
+        self.blocks: list[str] = []
+        self.seen: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        for collector in self.collectors:
+            collector["depth"] += 1
+        hint = semantic_text_hint(attrs)
+        if tag in SEMANTIC_TEXT_TAGS and hint and (self.allowed_hints is None or hint in self.allowed_hints):
+            if not self.collectors:
+                self.collectors.append({"depth": 1, "parts": [], "hint": hint})
+
+    def handle_data(self, data: str) -> None:
+        if not data or not self.collectors:
+            return
+        for collector in self.collectors:
+            collector["parts"].append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.collectors:
+            return
+        for collector in self.collectors:
+            collector["depth"] -= 1
+        while self.collectors and self.collectors[-1]["depth"] <= 0:
+            collector = self.collectors.pop()
+            min_length = 4 if collector.get("hint") == "title" else 12
+            add_html_text_block(self.blocks, self.seen, " ".join(collector["parts"]), min_length=min_length)
+
+    def finish(self) -> None:
+        while self.collectors:
+            collector = self.collectors.pop()
+            min_length = 4 if collector.get("hint") == "title" else 12
+            add_html_text_block(self.blocks, self.seen, " ".join(collector["parts"]), min_length=min_length)
+
+
+def semantic_html_text_blocks(html: str, allowed_hints: set[str] | None = None) -> list[str]:
+    parser = SemanticTextBlockParser(allowed_hints=allowed_hints)
+    try:
+        parser.feed(html)
+        parser.close()
+    except Exception:
+        pass
+    parser.finish()
+    return parser.blocks
+
+
+def preferred_html_text_blocks(html: str) -> list[str]:
+    body_blocks = semantic_html_text_blocks(html, allowed_hints={"body"})
+    if body_blocks:
+        return body_blocks
+    return html_text_blocks(html)
+
+
+def html_text_blocks(html: str) -> list[str]:
+    blocks: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"(?is)<(h1|h2|h3|p|li|figcaption)\b[^>]*>(?P<body>.*?)</\1>", html):
+        add_html_text_block(blocks, seen, strip_html(match.group("body")))
+    return blocks
+
+
+def html_block_text(html: str) -> str:
+    source = remove_noisy_html(html)
+    for tag in ("article", "main"):
+        match = re.search(rf"(?is)<{tag}\b[^>]*>(?P<body>.*?)</{tag}>", source)
+        if match:
+            blocks = preferred_html_text_blocks(match.group("body"))
+            text = " ".join(blocks) if blocks else strip_html(match.group("body"))
+            if len(text) >= WEB_PAGE_MIN_EXCERPT_CHARS:
+                return text
+    body_match = re.search(r"(?is)<body\b[^>]*>(?P<body>.*?)</body>", source)
+    body = body_match.group("body") if body_match else source
+    blocks = preferred_html_text_blocks(body)
+    return " ".join(blocks) if blocks else strip_html(body)
+
+
+def page_title(html: str, meta: dict[str, str], fallback: str) -> str:
+    title_match = re.search(r"(?is)<title\b[^>]*>(?P<title>.*?)</title>", html)
+    semantic_titles = semantic_html_text_blocks(remove_noisy_html(html), allowed_hints={"title"})
+    return first_text_value(
+        meta.get("og:title"),
+        meta.get("twitter:title"),
+        semantic_titles[:2],
+        strip_html(title_match.group("title")) if title_match else "",
+        fallback,
+    )
+
+
+def classify_embed_url(url: str) -> str:
+    host = (urlparse(url).hostname or "").lower()
+    if "youtube" in host or "youtu.be" in host:
+        return "youtube"
+    if "twitter" in host or host.endswith("x.com"):
+        return "x"
+    if "instagram" in host:
+        return "instagram"
+    if "tiktok" in host:
+        return "tiktok"
+    if "vimeo" in host:
+        return "vimeo"
+    return "embed"
+
+
+def embedded_references(html: str, base_url: str, limit: int = 8) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+
+    def add(raw_url: str, ref_type: str | None = None) -> None:
+        url = urljoin(base_url, html_unescape(str(raw_url or "")).strip())
+        if not url or url in {item["url"] for item in refs}:
+            return
+        parsed = urlparse(url)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            refs.append({"type": ref_type or classify_embed_url(url), "url": url})
+
+    for match in re.finditer(r"<link\b[^>]*\brel=['\"][^'\"]*\bnext\b[^'\"]*['\"][^>]*>", html, re.IGNORECASE | re.DOTALL):
+        attrs = html_attrs(match.group(0))
+        add(attrs.get("href", ""), "next")
+        if len(refs) >= limit:
+            return refs
+
+    for match in re.finditer(r"<iframe\b[^>]*\bsrc=['\"]([^'\"]+)['\"][^>]*>", html, re.IGNORECASE | re.DOTALL):
+        add(match.group(1))
+        if len(refs) >= limit:
+            return refs
+    for match in re.finditer(r"<blockquote\b[^>]*\bcite=['\"]([^'\"]+)['\"][^>]*>", html, re.IGNORECASE | re.DOTALL):
+        add(match.group(1))
+        if len(refs) >= limit:
+            return refs
+    for match in re.finditer(r"<link\b[^>]*type=['\"]application/json\+oembed['\"][^>]*>", html, re.IGNORECASE | re.DOTALL):
+        attrs = html_attrs(match.group(0))
+        add(attrs.get("href", ""))
+        if len(refs) >= limit:
+            return refs
+    meta = html_meta_map(html)
+    for key in ("twitter:player", "og:video", "og:video:url"):
+        if key in meta:
+            add(meta[key])
+            if len(refs) >= limit:
+                return refs
+    return refs
+
+
+def web_fetch_page(url: str) -> dict:
+    final_url, content_type, raw = web_open_public_url(url)
+    if content_type and not re.search(r"(text/html|application/xhtml\+xml|text/plain)", content_type, re.IGNORECASE):
+        raise ValueError(f"Unsupported content type: {content_type or 'unknown'}")
+    text = raw.decode(response_charset(content_type), errors="replace")
+    if re.search(r"text/plain", content_type, re.IGNORECASE):
+        excerpt = compact_text(text, WEB_PAGE_EXCERPT_LIMIT)
+        return {
+            "title": final_url,
+            "url": final_url,
+            "snippet": excerpt,
+            "summary": "",
+            "published": "",
+            "embedded": [],
+            "sourceType": "page",
+        }
+    meta = html_meta_map(text)
+    article = json_ld_article(text)
+    title = first_text_value(article.get("title"), page_title(text, meta, final_url))
+    summary = first_text_value(
+        article.get("summary"),
+        meta.get("description"),
+        meta.get("og:description"),
+        meta.get("twitter:description"),
+    )
+    body_text = first_text_value(article.get("article"), html_block_text(text))
+    if summary and body_text and summary not in body_text[: max(len(summary) + 120, 300)]:
+        excerpt_source = "\n".join((summary, body_text))
+    else:
+        excerpt_source = body_text or summary
+    excerpt = compact_text(excerpt_source, WEB_PAGE_EXCERPT_LIMIT)
+    return {
+        "title": title,
+        "url": final_url,
+        "snippet": excerpt,
+        "summary": summary,
+        "published": first_text_value(article.get("published")),
+        "embedded": embedded_references(text, final_url),
+        "sourceType": "page",
+    }
+
+
+def web_fetch_pages(urls: list[str]) -> list[dict]:
+    results: list[dict] = []
+    for url in urls:
+        try:
+            results.append(web_fetch_page(url))
+        except Exception as exc:
+            results.append({"title": "Page fetch error", "url": url, "snippet": str(exc), "sourceType": "page-error"})
+    return results
+
+
+def usable_web_page_result(item: dict) -> bool:
+    return item.get("sourceType") == "page" and len(str(item.get("snippet") or "")) >= WEB_PAGE_MIN_EXCERPT_CHARS
 
 
 WEB_INTENT_TERMS = (
@@ -1495,6 +2168,9 @@ def extract_web_query_terms(text: str, include_intents: bool = True) -> list[str
 
 
 def build_continuous_web_query(user_text: str, history: list[dict[str, str]]) -> str:
+    direct_urls = extract_web_urls(user_text)
+    if direct_urls:
+        return " ".join(direct_urls)
     current_terms = extract_web_query_terms(user_text, include_intents=True)
     inherited: list[str] = []
     for item in reversed(history[-8:]):
@@ -1515,19 +2191,56 @@ def build_continuous_web_query(user_text: str, history: list[dict[str, str]]) ->
     return re.sub(r"\s+", " ", str(user_text or "")).strip()
 
 
-def format_web_results(query: str, results: list[dict[str, str]]) -> str:
+def format_web_results(query: str, results: list[dict]) -> str:
     if not results:
         return ""
+    has_pages = any(str(item.get("sourceType") or "") in {"page", "page-error"} for item in results)
+    heading = (
+        f'Web page notes. Target: "{compact_text(query, 120)}"'
+        if has_pages
+        else f'Web search results. Query: "{compact_text(query, 120)}"'
+    )
     lines = [
-        f'Web検索結果です。検索語: "{compact_text(query, 120)}"',
-        "現在までの会話コンテキスト、キャラ設定、直前の発言を優先してください。",
-        "検索結果は補助情報として必要な場合だけ使い、検索結果にない事実は断定しないでください。",
+        heading,
+        "Prefer the current conversation, character settings, and the immediately previous message.",
+        "Use these notes only as supporting context. Do not state facts that are not supported here.",
     ]
     for index, item in enumerate(results, start=1):
+        source_type = str(item.get("sourceType") or "search")
+        if source_type == "page-error":
+            lines.append(
+                f"{index}. Page fetch failed\n"
+                f"URL: {item.get('url', '')}\n"
+                f"Reason: {compact_text(item.get('snippet', ''), 240)}"
+            )
+            continue
+        if source_type == "page":
+            parts = [
+                f"{index}. Page: {compact_text(item.get('title', ''), 120)}",
+                f"URL: {item.get('url', '')}",
+            ]
+            published = str(item.get("published") or "").strip()
+            if published:
+                parts.append(f"Published: {compact_text(published, 80)}")
+            summary = str(item.get("summary") or "").strip()
+            if summary:
+                parts.append(f"Summary: {compact_text(summary, 360)}")
+            parts.append(f"Excerpt: {compact_text(item.get('snippet', ''), 900)}")
+            embedded = item.get("embedded") if isinstance(item.get("embedded"), list) else []
+            if embedded:
+                refs = [
+                    f"- {compact_text(ref.get('type', 'ref'), 24)}: {compact_text(ref.get('url', ''), 180)}"
+                    for ref in embedded[:5]
+                    if isinstance(ref, dict) and ref.get("url")
+                ]
+                if refs:
+                    parts.append("Referenced embeds or next pages, not fetched:\n" + "\n".join(refs))
+            lines.append("\n".join(parts))
+            continue
         lines.append(
-            f"{index}. {compact_text(item.get('title', ''), 100)}\n"
+            f"{index}. Search result: {compact_text(item.get('title', ''), 100)}\n"
             f"URL: {item.get('url', '')}\n"
-            f"概要: {compact_text(item.get('snippet', ''), 180)}"
+            f"Snippet: {compact_text(item.get('snippet', ''), 220)}"
         )
     return "\n".join(lines)
 
@@ -1539,11 +2252,12 @@ def request_lmstudio(
     reply_length: str,
     character_prompt: str,
     user_address: str,
+    max_output_tokens: object = 0,
     no_dialogue: bool = False,
     speaker: str = "リノン",
     two_only_mode: bool = False,
-) -> tuple[str, str, str, int]:
-    length_instruction, max_tokens, chunk_limit = reply_style_for_length(reply_length)
+) -> tuple[str, str, str, int, int]:
+    length_instruction, base_max_tokens, chunk_limit = reply_style_for_length(reply_length)
     address = str(user_address or "").strip() or "あなた"
     address_instruction = (
         f"\nユーザーへの呼びかけは「{address}」を使ってください。"
@@ -1591,7 +2305,6 @@ def request_lmstudio(
             *messages,
         ],
         "temperature": 0.7,
-        "max_tokens": max_tokens,
         "stream": False,
     }
     payload["messages"][0]["content"] = (
@@ -1605,32 +2318,61 @@ def request_lmstudio(
         "思考過程は出さず、最終回答だけを出してください。/no_think"
         f"{emoji_instruction}"
     )
+    model_info = lmstudio_model_detail(model)
+    max_tokens = resolve_max_output_tokens(
+        reply_length,
+        model,
+        base_max_tokens,
+        max_output_tokens,
+        auto_emoji=auto_emoji,
+        messages=messages,
+        prompt_messages=payload["messages"],
+        model_info=model_info,
+    )
+    payload["max_tokens"] = max_tokens
     req = urllib.request.Request(
         f"{LM_STUDIO_URL}/chat/completions",
         data=json_bytes(payload),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=90) as res:
-        data = json.loads(res.read().decode("utf-8"))
-    choice_message = data["choices"][0]["message"]
+    try:
+        with urllib.request.urlopen(req, timeout=90) as res:
+            data = json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            error_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            error_body = str(exc)
+        raise RuntimeError(f"LM Studio HTTP {exc.code}: {compact_text(error_body, 420)}") from exc
+    choice = data["choices"][0]
+    choice_message = choice["message"]
     content = str(choice_message.get("content") or "").strip()
     if not content:
+        reasoning = str(choice_message.get("reasoning_content") or choice_message.get("reasoning") or "").strip()
+        finish_reason = str(choice.get("finish_reason") or "")
         # Some local reasoning models can spend the whole budget in reasoning_content.
-        # Return a visible explanation instead of silently handing an empty string to TTS.
+        # The budget is precomputed from LM Studio model metadata, so report the cap clearly.
+        if reasoning:
+            raise RuntimeError(
+                "LM Studio returned reasoning but no final content "
+                f"(finish_reason={finish_reason or 'unknown'}, max_tokens={max_tokens}). "
+                "Increase Max output tokens or use a non-reasoning model."
+            )
         raise RuntimeError(
             "LM Studio returned empty assistant content. Try a non-reasoning model, "
             "or add /no_think to the prompt/model preset."
         )
     allowed_emojis = {item["emoji"] for item in load_emoji_items()}
     message, emoji = parse_lmstudio_reply(content, allowed_emojis) if auto_emoji else (content, "")
+    message = strip_speaker_prefix(message, speaker)
     message = strip_irodori_style_marks(message)
     if no_dialogue:
         message = sanitize_no_dialogue_reply(message)
     if not message:
         raise RuntimeError("LM Studio returned only style marks and no speakable text.")
     model_used = data.get("model") or payload["model"]
-    return message, model_used, emoji, chunk_limit
+    return message, model_used, emoji, chunk_limit, max_tokens
 
 
 def ensure_irodori_module():
@@ -2066,8 +2808,12 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {
                     "lmStudioUrl": LM_STUDIO_URL,
+                    "lmStudioBaseUrl": LM_STUDIO_BASE_URL,
                     "models": diagnostics["models"],
+                    "modelDetails": list(get_lmstudio_model_info().values()),
                     "contextLimit": DEFAULT_CONTEXT_LIMIT,
+                    "maxOutputTokens": DEFAULT_MAX_OUTPUT_TOKENS,
+                    "maxOutputTokensLimit": MAX_OUTPUT_TOKENS_LIMIT,
                     "irodoriRoot": str(IRODORI_ROOT),
                     "irodoriReady": diagnostics["irodoriRootExists"] and diagnostics["irodoriPythonExists"],
                     "checkpoint": IRODORI_CHECKPOINT,
@@ -2305,6 +3051,7 @@ class Handler(BaseHTTPRequestHandler):
             auto_emoji = bool(body.get("autoEmoji", True))
             no_dialogue = bool(body.get("noDialogue", False))
             reply_length = str(body.get("replyLength") or "normal").strip()
+            max_output_tokens = sanitize_max_output_tokens(body.get("maxOutputTokens"))
             speaker_slot = "second" if str(body.get("speakerSlot") or "") == "second" else "main"
             speaker = str(body.get("speaker") or ("ルヴィア" if body.get("twoPlayerMode") else "リノン")).strip()
             if model == "__codex_queue__":
@@ -2322,6 +3069,7 @@ class Handler(BaseHTTPRequestHandler):
                         "webContext": str(body.get("webContext") or "").strip(),
                         "webTopic": str(body.get("webTopic") or "").strip(),
                         "replyLength": reply_length,
+                        "maxOutputTokens": max_output_tokens,
                         "speechRate": speech_rate,
                         "emojiStyle": emoji_style,
                     }
@@ -2338,6 +3086,7 @@ class Handler(BaseHTTPRequestHandler):
                         "llmEmojiStyle": "",
                         "autoEmoji": False,
                         "replyLength": reply_length,
+                        "maxOutputTokens": max_output_tokens,
                         "speechRate": speech_rate,
                         "durationScale": duration_scale,
                         "audios": [],
@@ -2372,16 +3121,30 @@ class Handler(BaseHTTPRequestHandler):
                 for item in history
                 if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
             ]
-            search_results: list[dict[str, str]] = []
+            search_results: list[dict] = []
             web_query = ""
             web_context = existing_web_context
             if use_web_search:
                 web_query_source = web_topic or user_text
-                web_query = build_continuous_web_query(web_query_source, raw_messages)
-                try:
-                    search_results = web_search(web_query, limit=3)
-                except Exception as exc:
-                    search_results = [{"title": "検索エラー", "url": "", "snippet": str(exc)}]
+                direct_urls = extract_web_urls(web_query_source)
+                if direct_urls:
+                    web_query = " ".join(direct_urls)
+                    search_results = web_fetch_pages(direct_urls)
+                    if not any(usable_web_page_result(item) for item in search_results):
+                        try:
+                            search_results.extend(web_search(web_query, limit=1))
+                        except Exception as exc:
+                            search_results.append(
+                                {"title": "Search error", "url": "", "snippet": str(exc), "sourceType": "search-error"}
+                            )
+                else:
+                    web_query = build_continuous_web_query(web_query_source, raw_messages)
+                    try:
+                        search_results = web_search(web_query, limit=3)
+                    except Exception as exc:
+                        search_results = [
+                            {"title": "Search error", "url": "", "snippet": str(exc), "sourceType": "search-error"}
+                        ]
                 web_context = format_web_results(web_query, search_results)
             if web_context:
                 raw_messages.append(
@@ -2396,13 +3159,14 @@ class Handler(BaseHTTPRequestHandler):
                 )
             raw_messages.append({"role": "user", "content": user_text})
             messages, context_stats = compact_messages_for_context(raw_messages, context_limit)
-            reply, model_used, llm_emoji, chunk_limit = request_lmstudio(
+            reply, model_used, llm_emoji, chunk_limit, resolved_max_output_tokens = request_lmstudio(
                 messages,
                 model,
                 auto_emoji=auto_emoji,
                 reply_length=reply_length,
                 character_prompt=character_prompt,
                 user_address=user_address,
+                max_output_tokens=max_output_tokens,
                 no_dialogue=no_dialogue,
                 speaker=speaker,
                 two_only_mode=two_only_mode,
@@ -2445,6 +3209,7 @@ class Handler(BaseHTTPRequestHandler):
                     "speaker": speaker,
                     "model": model_used,
                     "replyLength": reply_length,
+                    "maxOutputTokens": resolved_max_output_tokens,
                     "speechRate": speech_rate,
                     "durationScale": duration_scale,
                     "emojiStyle": effective_emoji,
@@ -2494,6 +3259,7 @@ class Handler(BaseHTTPRequestHandler):
                     "llmEmojiStyle": llm_emoji,
                     "autoEmoji": auto_emoji,
                     "replyLength": reply_length,
+                    "maxOutputTokens": resolved_max_output_tokens,
                     "speechRate": speech_rate,
                     "durationScale": duration_scale,
                     "audios": audios,

@@ -24,6 +24,7 @@ const ttsCaption = document.querySelector("#ttsCaption");
 const secondSystemPrompt = document.querySelector("#secondSystemPrompt");
 const secondTtsCaption = document.querySelector("#secondTtsCaption");
 const contextLimit = document.querySelector("#contextLimit");
+const maxOutputTokens = document.querySelector("#maxOutputTokens");
 const contextUsage = document.querySelector("#contextUsage");
 const autoEmoji = document.querySelector("#autoEmoji");
 const webSearch = document.querySelector("#webSearch");
@@ -861,6 +862,7 @@ function sessionPayload() {
       referencePath: mainReferencePath,
       secondReferencePath,
       contextLimit: Number(contextLimit.value || 8200),
+      maxOutputTokens: Number(maxOutputTokens.value || 0),
       model: modelSelect.value,
       steps: Number(stepsInput.value || 12),
       speechRate: speechRate.value,
@@ -940,6 +942,10 @@ function applySession(profile) {
   if (settings.contextLimit) {
     contextLimit.value = settings.contextLimit;
     contextLimit.dataset.touched = "1";
+  }
+  if (Object.prototype.hasOwnProperty.call(settings, "maxOutputTokens")) {
+    maxOutputTokens.value = settings.maxOutputTokens || 0;
+    maxOutputTokens.dataset.touched = "1";
   }
   updateContextUsage();
   setSelectValue(modelSelect, settings.model);
@@ -1118,6 +1124,12 @@ async function refreshStatus() {
     if (data.contextLimit && !contextLimit.dataset.touched) {
       contextLimit.value = data.contextLimit;
     }
+    if (Object.prototype.hasOwnProperty.call(data, "maxOutputTokens") && !maxOutputTokens.dataset.touched) {
+      maxOutputTokens.value = data.maxOutputTokens || 0;
+    }
+    if (data.maxOutputTokensLimit) {
+      maxOutputTokens.max = data.maxOutputTokensLimit;
+    }
     updateContextUsage();
     if (data.ttsCaption && !ttsCaption.dataset.touched) {
       ttsCaption.value = data.ttsCaption;
@@ -1239,6 +1251,7 @@ async function sendChatTurn({
         ttsBackendMode: ttsBackendMode.value,
         secondTtsHost: secondTtsHost.value.trim(),
         contextLimit: Number(contextLimit.value || 8200),
+        maxOutputTokens: Number(maxOutputTokens.value || 0),
         emojiStyle: autoEmoji.checked ? "" : currentEmojiStyle(),
         autoEmoji: autoEmoji.checked,
         webSearch: webSearchNow || (webSearch.checked && speaker === mainCharacterName && !isAuto),
@@ -1265,7 +1278,8 @@ async function sendChatTurn({
       ? ` / web ${data.webSearch ? (data.webResults || []).length : "memo"}${webQueryLabel ? ` q:${webQueryLabel}` : ""}`
       : "";
     const paceMeta = data.speechRate === "fast" ? " / pace fast" : "";
-    const assistantMeta = `${data.speaker || mainCharacterName} / ${data.model} / ${data.replyLength}${style}${webMeta}${paceMeta} / pose ${data.expression} / tts ${timing}`;
+    const outputMeta = data.maxOutputTokens ? ` / out ${data.maxOutputTokens}` : "";
+    const assistantMeta = `${data.speaker || mainCharacterName} / ${data.model} / ${data.replyLength}${outputMeta}${style}${webMeta}${paceMeta} / pose ${data.expression} / tts ${timing}`;
     if (!backgroundAuto) {
       addMessage("assistant", data.reply, assistantMeta);
     } else if (data.audios.length) {
@@ -1495,6 +1509,9 @@ autoStartButton.addEventListener("click", () => {
 contextLimit.addEventListener("input", () => {
   contextLimit.dataset.touched = "1";
   updateContextUsage();
+});
+maxOutputTokens.addEventListener("input", () => {
+  maxOutputTokens.dataset.touched = "1";
 });
 
 ttsCaption.addEventListener("input", () => {
