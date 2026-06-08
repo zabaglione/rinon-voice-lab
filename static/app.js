@@ -80,12 +80,14 @@ let activeSecondCharacterId = "luvia";
 let editingCharacterId = "rinon";
 
 const history = [];
+const AUTO_PREFETCH_TURN_TARGET = 2;
 let queue = [];
 let interactionLocked = false;
 let autoMode = false;
 let autoPending = false;
 let autoNextSpeaker = mainCharacterName;
 let playbackSpeaker = mainCharacterName;
+let playbackTurnId = "";
 let lastAssistantSpeaker = "";
 let lastAssistantText = "";
 let autoTopic = "";
@@ -94,6 +96,9 @@ let autoWebContext = "";
 let autoWebQuery = "";
 let autoWebResults = [];
 let autoTurnCount = 0;
+let autoRunId = 0;
+let autoPrefetchRevision = 0;
+let autoTurnSequence = 0;
 let autoNoDialogue = false;
 let externalSpeakLastId = 0;
 let externalSpeakPolling = false;
@@ -364,6 +369,76 @@ function otherSpeaker(speaker) {
   return speaker === mainCharacterName ? secondCharacterName : mainCharacterName;
 }
 
+function nextAutoTurnId(speaker) {
+  autoTurnSequence += 1;
+  const safeSpeaker = String(speaker || "speaker").replace(/[^0-9A-Za-z_-]+/g, "_") || "speaker";
+  return `auto-${autoRunId}-${autoTurnSequence}-${safeSpeaker}`;
+}
+
+function queuedFutureAutoTurnCount() {
+  const ids = new Set();
+  for (const item of queue) {
+    if (!item.autoTurnId || item.autoTurnId === playbackTurnId) continue;
+    ids.add(item.autoTurnId);
+  }
+  return ids.size;
+}
+
+function autoBufferedTurnCount() {
+  return queuedFutureAutoTurnCount() + (autoPending ? 1 : 0);
+}
+
+function canPrefetchAutoTurn() {
+  if (!autoMode || autoPending || !twoPlayerMode.checked || !lastAssistantText) return false;
+  if (modelSelect.value === "__codex_queue__") return false;
+  return autoBufferedTurnCount() < AUTO_PREFETCH_TURN_TARGET;
+}
+
+function scheduleAutoConversationPrefetch() {
+  if (!canPrefetchAutoTurn()) return;
+  window.setTimeout(() => {
+    if (canPrefetchAutoTurn()) {
+      continueAutoConversation();
+    }
+  }, 0);
+}
+
+function removeHistoryEntries(entries) {
+  if (!entries?.size) return;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    if (entries.has(history[index])) {
+      history.splice(index, 1);
+    }
+  }
+  updateContextUsage();
+}
+
+function syncLastAssistantFromHistory() {
+  const last = [...history].reverse().find((item) => item?.role === "assistant" && item.content);
+  if (!last) {
+    lastAssistantSpeaker = "";
+    lastAssistantText = "";
+    return;
+  }
+  const text = String(last.content || "");
+  const separator = text.indexOf(": ");
+  lastAssistantSpeaker = separator > 0 ? text.slice(0, separator) : "";
+  lastAssistantText = separator > 0 ? text.slice(separator + 2) : text;
+}
+
+function dropQueuedFutureAutoTurns() {
+  const removedHistoryEntries = new Set();
+  queue = queue.filter((item) => {
+    if (!item.autoTurnId || item.autoTurnId === playbackTurnId) return true;
+    if (item.autoHistoryEntry) {
+      removedHistoryEntries.add(item.autoHistoryEntry);
+    }
+    return false;
+  });
+  removeHistoryEntries(removedHistoryEntries);
+  syncLastAssistantFromHistory();
+}
+
 function currentEmojiStyle() {
   return emojiCustom.value.trim() || emojiStyleSelect.value;
 }
@@ -406,6 +481,11 @@ function twoOnlyGuidance() {
 function queueAutoTopic(text) {
   const topic = String(text || "").trim();
   if (!topic) return false;
+  const hasGeneratedAutoTurn = Boolean(lastAssistantText || playbackTurnId || queue.some((item) => item.autoTurnId));
+  if (hasGeneratedAutoTurn) {
+    autoPrefetchRevision += 1;
+    dropQueuedFutureAutoTurns();
+  }
   autoTopicQueue.push(topic);
   if (wantsNoDialogue(topic)) {
     autoNoDialogue = true;
@@ -416,6 +496,7 @@ function queueAutoTopic(text) {
   updateContextUsage();
   sessionStatus.textContent = `queued topic ${autoTopicQueue.length}`;
   updateAutoControls();
+  scheduleAutoConversationPrefetch();
   return true;
 }
 
@@ -898,6 +979,9 @@ function clearContext() {
   if (!ok) return;
   autoMode = false;
   autoPending = false;
+  autoRunId += 1;
+  autoPrefetchRevision += 1;
+  autoTurnSequence = 0;
   lastContextStats = null;
   autoWebContext = "";
   autoWebQuery = "";
@@ -905,6 +989,7 @@ function clearContext() {
   history.length = 0;
   messagesEl.innerHTML = "";
   queue = [];
+  playbackTurnId = "";
   player.pause();
   player.removeAttribute("src");
   player.load();
@@ -1007,30 +1092,27 @@ function playQueue(items, speaker = activeStage().speaker, options = {}) {
   playbackSpeaker = speaker;
   if (queue.length === 0) {
     setInteractionLocked(false);
+    scheduleAutoConversationPrefetch();
     return;
   }
   playNext();
 }
 
-function hasBufferedOtherSpeaker(speaker) {
-  return queue.some((item) => (item.speaker || speaker) !== speaker);
-}
-
 function playNext() {
   const next = queue.shift();
   if (!next) {
+    playbackTurnId = "";
     speaking.textContent = "ready";
     secondSpeaking.textContent = "standby";
     setSpeakingState(false);
     setExpression("neutral");
     setSecondExpression("neutral");
     setInteractionLocked(false);
-    if (autoMode && !autoPending) {
-      continueAutoConversation();
-    }
+    scheduleAutoConversationPrefetch();
     return;
   }
   playbackSpeaker = next.speaker || playbackSpeaker;
+  playbackTurnId = next.autoTurnId || "";
   updateAudioPan(playbackSpeaker);
   if (next.deferredMessage) {
     addMessage("assistant", next.deferredMessage.reply, next.deferredMessage.meta);
@@ -1048,9 +1130,7 @@ function playNext() {
     setStageStatus("tap play", playbackSpeaker);
     setSpeakingState(false);
   });
-  if (autoMode && !autoPending && !hasBufferedOtherSpeaker(playbackSpeaker)) {
-    window.setTimeout(() => continueAutoConversation(), 0);
-  }
+  scheduleAutoConversationPrefetch();
 }
 
 player.addEventListener("ended", playNext);
@@ -1202,6 +1282,8 @@ async function sendChatTurn({
   webSearchNow = false,
   webContext = "",
   webTopic = "",
+  autoRunIdAtStart = autoRunId,
+  autoRevisionAtStart = autoPrefetchRevision,
 }) {
   if (interactionLocked && !allowWhileLocked) return false;
   const text = String(message || "").trim();
@@ -1262,13 +1344,20 @@ async function sendChatTurn({
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
+    if (
+      isAuto &&
+      (!autoMode || autoRunIdAtStart !== autoRunId || autoRevisionAtStart !== autoPrefetchRevision)
+    ) {
+      return false;
+    }
     lastContextStats = data.contextStats || lastContextStats;
     if (autoMode && data.webContext) {
       autoWebContext = data.webContext;
       autoWebQuery = data.webQuery || "";
       autoWebResults = data.webResults || [];
     }
-    const timing = data.audios.map((item) => `${item.elapsed}s`).join(", ");
+    let responseAudios = Array.isArray(data.audios) ? data.audios.map((item) => ({ ...item })) : [];
+    const timing = responseAudios.map((item) => `${item.elapsed}s`).join(", ");
     const style = data.emojiStyle
       ? ` / ${data.autoEmoji && data.llmEmojiStyle ? "auto style" : "style"} ${data.emojiStyle}`
       : "";
@@ -1280,23 +1369,32 @@ async function sendChatTurn({
     const paceMeta = data.speechRate === "fast" ? " / pace fast" : "";
     const outputMeta = data.maxOutputTokens ? ` / out ${data.maxOutputTokens}` : "";
     const assistantMeta = `${data.speaker || mainCharacterName} / ${data.model} / ${data.replyLength}${outputMeta}${style}${webMeta}${paceMeta} / pose ${data.expression} / tts ${timing}`;
+    const historyEntry = { role: "assistant", content: `${data.speaker || speaker}: ${data.reply}` };
     if (!backgroundAuto) {
       addMessage("assistant", data.reply, assistantMeta);
-    } else if (data.audios.length) {
-      data.audios[0] = {
-        ...data.audios[0],
+    } else if (responseAudios.length) {
+      responseAudios[0] = {
+        ...responseAudios[0],
         deferredMessage: {
           reply: data.reply,
           meta: assistantMeta,
         },
       };
     }
-    history.push({ role: "assistant", content: `${data.speaker || speaker}: ${data.reply}` });
+    history.push(historyEntry);
+    if (isAuto && responseAudios.length) {
+      const autoTurnId = nextAutoTurnId(data.speaker || speaker);
+      responseAudios = responseAudios.map((item) => ({
+        ...item,
+        autoTurnId,
+        autoHistoryEntry: historyEntry,
+      }));
+    }
     lastAssistantSpeaker = data.speaker || speaker;
     lastAssistantText = data.reply;
     updateContextUsage();
-    if (Array.isArray(data.audios) && data.audios.length) {
-      playQueue(data.audios, data.speaker || speaker, { append: backgroundAuto });
+    if (responseAudios.length) {
+      playQueue(responseAudios, data.speaker || speaker, { append: backgroundAuto });
     } else {
       setStageStatus(data.codexQueued ? "codex queued" : "ready", data.speaker || speaker);
       setSpeakingState(false, data.speaker || speaker);
@@ -1306,6 +1404,12 @@ async function sendChatTurn({
     }
     return true;
   } catch (error) {
+    if (
+      isAuto &&
+      (!autoMode || autoRunIdAtStart !== autoRunId || autoRevisionAtStart !== autoPrefetchRevision)
+    ) {
+      return false;
+    }
     autoMode = false;
     autoPending = false;
     addMessage("assistant", `エラー: ${error.message}`);
@@ -1344,6 +1448,10 @@ async function startAutoConversation() {
   }
   autoMode = true;
   autoPending = false;
+  autoRunId += 1;
+  autoPrefetchRevision = 0;
+  autoTurnSequence = 0;
+  playbackTurnId = "";
   updateTwoPlayerMode();
   autoNextSpeaker = mainCharacterName;
   lastAssistantSpeaker = "";
@@ -1368,13 +1476,18 @@ async function startAutoConversation() {
     visibleUserText: `お題: ${topic}`,
     speaker: firstSpeaker,
     isAuto: true,
+    autoRunIdAtStart: autoRunId,
+    autoRevisionAtStart: autoPrefetchRevision,
     webSearchNow: webSearch.checked,
     webTopic: topic,
   });
+  scheduleAutoConversationPrefetch();
 }
 
 async function continueAutoConversation() {
-  if (!autoMode || autoPending) return;
+  if (!canPrefetchAutoTurn()) return;
+  const runIdAtStart = autoRunId;
+  const revisionAtStart = autoPrefetchRevision;
   autoPending = true;
   const speaker = autoNextSpeaker;
   autoNextSpeaker = otherSpeaker(speaker);
@@ -1394,8 +1507,9 @@ async function continueAutoConversation() {
   const nextAutoMessage = autoNoDialogue
     ? `${twoOnlyGuidance()}${noDialogueGuidance()}${queuedTopic ? "ここから新しいお題に切り替えます。" : ""}会話のお題は「${autoTopic}」です。第${autoTurnCount}ターンです。直前の発声を受けて、普通のセリフではなく、発声・吐息・擬音の流れだけを少し変化させて続けてください。呼びかけ、質問、説明、選択肢提示は禁止です。`
     : `${twoOnlyGuidance()}${topicLine}${previousLine}あなたは${speaker}です。${partner}の発言を受けて、${partner}に返す一言として自然に会話を続けてください。単純な相槌で終わらせず、前の発言から一歩だけ発展させてください。新しい情報、疑問、軽い反論、感情の変化のどれかを少し入れて、次の発言につながる余韻を残してください。`;
+  let accepted = false;
   try {
-    await sendChatTurn({
+    accepted = await sendChatTurn({
       message: nextAutoMessage,
       visibleUserText: "",
       speaker,
@@ -1405,16 +1519,28 @@ async function continueAutoConversation() {
       webSearchNow: shouldRefreshWeb,
       webContext: shouldRefreshWeb ? "" : autoWebContext,
       webTopic: shouldRefreshWeb ? queuedTopic : "",
+      autoRunIdAtStart: runIdAtStart,
+      autoRevisionAtStart: revisionAtStart,
     });
   } finally {
-    autoPending = false;
-    updateAutoControls();
+    if (runIdAtStart === autoRunId) {
+      if (!accepted && autoMode) {
+        autoNextSpeaker = speaker;
+        autoTurnCount = Math.max(0, autoTurnCount - 1);
+      }
+      autoPending = false;
+      updateAutoControls();
+      scheduleAutoConversationPrefetch();
+    }
   }
 }
 
 function stopAutoConversation() {
   autoMode = false;
   autoPending = false;
+  autoRunId += 1;
+  autoPrefetchRevision += 1;
+  dropQueuedFutureAutoTurns();
   autoTopic = "";
   autoTopicQueue = [];
   autoWebContext = "";
