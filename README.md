@@ -217,6 +217,7 @@ python3.10 -B tools/generate_character_images.py \
   --google-model gemini-3.1-flash-image \
   --character akari \
   --expression neutral \
+  --postprocess portrait-crop \
   --update-profiles
 
 python3.10 -B tools/generate_character_images.py \
@@ -226,10 +227,25 @@ python3.10 -B tools/generate_character_images.py \
   --all-profile-expressions \
   --reference-expression neutral \
   --skip-reference-expression \
+  --postprocess portrait-crop \
   --update-profiles
 ```
 
-Add `--overwrite` to regenerate existing files instead of skipping them.
+`--postprocess portrait-crop` normalizes saved images to a vertical 3:4 portrait,
+`768x1024` by default. It also converts generated JPEG bytes to real PNG files
+at the existing `.png` output paths. Add `--overwrite` to regenerate existing
+files instead of skipping them.
+
+To normalize already generated files without calling an image API:
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --character akari \
+  --all-profile-expressions \
+  --postprocess portrait-crop \
+  --postprocess-existing
+```
 
 Generate with OpenAI:
 

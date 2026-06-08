@@ -6,6 +6,8 @@ import json
 import mimetypes
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -26,9 +28,11 @@ DEFAULT_GOOGLE_IMAGE_MODEL = os.environ.get(
 
 COMMON_STYLE_PROMPT = (
     "anime visual novel character portrait, adult character, safe for work, "
-    "centered bust shot, 3/4 view, clean pale studio background, crisp line art, "
-    "soft cel shading, detailed expressive eyes, white futuristic jacket with cyan accents, "
-    "black high-collar inner suit, white and cyan headset, polished game character asset, "
+    "vertical 3:4 portrait composition, upper-chest bust-up framing, head and shoulders visible, "
+    "face centered, three-quarter angle, no full body, no waist-up, no landscape composition, "
+    "clean pale studio background, crisp line art, soft cel shading, detailed expressive eyes, "
+    "white futuristic jacket with cyan accents, black high-collar inner suit, "
+    "white and cyan headset, polished game character asset, "
     "no text, no logo, no watermark"
 )
 
@@ -184,6 +188,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Print planned prompts without API calls.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output files.")
     parser.add_argument(
+        "--postprocess",
+        choices=("none", "portrait-crop"),
+        default=os.environ.get("CHARACTER_IMAGE_POSTPROCESS", "none"),
+        help="Optional image postprocess after generation.",
+    )
+    parser.add_argument(
+        "--postprocess-existing",
+        action="store_true",
+        help="Postprocess existing generated files without calling an image API.",
+    )
+    parser.add_argument(
+        "--portrait-aspect",
+        default=os.environ.get("CHARACTER_IMAGE_PORTRAIT_ASPECT", "3:4"),
+        help="Portrait crop aspect as WIDTH:HEIGHT.",
+    )
+    parser.add_argument(
+        "--portrait-size",
+        default=os.environ.get("CHARACTER_IMAGE_PORTRAIT_SIZE", "768x1024"),
+        help="Portrait output size as WIDTHxHEIGHT.",
+    )
+    parser.add_argument(
+        "--portrait-crop-y",
+        type=float,
+        default=float(os.environ.get("CHARACTER_IMAGE_PORTRAIT_CROP_Y", "0.35")),
+        help="Vertical crop anchor from 0.0 top to 1.0 bottom.",
+    )
+    parser.add_argument(
         "--update-profiles",
         action="store_true",
         help="Replace generated expression paths in profile.json and profile.txt.",
@@ -255,10 +286,19 @@ def parse_args() -> argparse.Namespace:
         parse_size(args.size)
     except argparse.ArgumentTypeError as exc:
         parser.error(str(exc))
+    try:
+        parse_size(args.portrait_size)
+        parse_aspect(args.portrait_aspect)
+    except argparse.ArgumentTypeError as exc:
+        parser.error(str(exc))
     if args.skip_reference_expression and not args.reference_expression:
         parser.error("--skip-reference-expression requires --reference-expression.")
     if args.reference_expression and args.provider not in {"nano-banana", "google"}:
         parser.error("--reference-expression currently requires --provider nano-banana or google.")
+    if args.postprocess_existing and args.postprocess == "none":
+        parser.error("--postprocess-existing requires --postprocess portrait-crop.")
+    if not 0 <= args.portrait_crop_y <= 1:
+        parser.error("--portrait-crop-y must be between 0.0 and 1.0.")
     return args
 
 
@@ -270,6 +310,17 @@ def parse_size(value: str) -> tuple[int, int]:
     height = int(match.group(2))
     if width < 64 or height < 64:
         raise argparse.ArgumentTypeError("size is too small")
+    return width, height
+
+
+def parse_aspect(value: str) -> tuple[int, int]:
+    match = re.fullmatch(r"(\d+):(\d+)", value.strip())
+    if not match:
+        raise argparse.ArgumentTypeError("aspect must look like WIDTH:HEIGHT")
+    width = int(match.group(1))
+    height = int(match.group(2))
+    if width < 1 or height < 1:
+        raise argparse.ArgumentTypeError("aspect values must be positive")
     return width, height
 
 
@@ -369,7 +420,8 @@ def build_reference_prompt(profile: dict[str, Any], expression: str, reference_e
             "Use the attached image as the exact identity reference for this character.",
             (
                 "Keep the same face shape, hairstyle, hair color, eye color, outfit, headset, "
-                "camera angle, bust-shot framing, background, line art, shading, and lighting."
+                "camera angle, vertical 3:4 portrait crop, upper-chest bust-up framing, "
+                "background, line art, shading, and lighting."
             ),
             (
                 "Change only the facial expression and small natural acting details needed for "
@@ -390,6 +442,16 @@ def output_path(character_id: str, expression: str, variant_count: int, variant_
     out_dir = CHARACTER_ROOT / character_id / "expressions" / expression
     suffix = "" if variant_count == 1 else f"_{variant_index:02d}"
     return out_dir / f"{character_id}_{expression}_generated{suffix}.png"
+
+
+def detect_image_extension(data: bytes) -> str:
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return ".webp"
+    return ".img"
 
 
 def character_url(character_id: str, expression: str, path: Path) -> str:
@@ -598,6 +660,156 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     tmp_path.replace(path)
 
 
+def sips_path() -> str:
+    path = shutil.which("sips")
+    if not path:
+        raise RuntimeError(
+            "--postprocess portrait-crop requires Pillow or macOS sips. "
+            "Install Pillow or run on macOS."
+        )
+    return path
+
+
+def sips_image_size(path: Path) -> tuple[int, int]:
+    result = subprocess.run(
+        [sips_path(), "-g", "pixelWidth", "-g", "pixelHeight", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    width_match = re.search(r"pixelWidth:\s*(\d+)", result.stdout)
+    height_match = re.search(r"pixelHeight:\s*(\d+)", result.stdout)
+    if not width_match or not height_match:
+        raise RuntimeError(f"Could not read image size for {path}")
+    return int(width_match.group(1)), int(height_match.group(1))
+
+
+def portrait_crop_geometry(
+    width: int,
+    height: int,
+    aspect: tuple[int, int],
+    crop_y: float,
+) -> tuple[int, int, int, int]:
+    aspect_width, aspect_height = aspect
+    target_ratio = aspect_width / aspect_height
+    current_ratio = width / height
+    if current_ratio > target_ratio:
+        crop_height = height
+        crop_width = max(1, round(height * target_ratio))
+        offset_x = max(0, round((width - crop_width) / 2))
+        offset_y = 0
+    else:
+        crop_width = width
+        crop_height = max(1, round(width / target_ratio))
+        offset_x = 0
+        offset_y = max(0, round((height - crop_height) * crop_y))
+    return crop_width, crop_height, offset_x, offset_y
+
+
+def postprocess_portrait_crop_with_pillow(path: Path, args: argparse.Namespace) -> bool:
+    try:
+        from PIL import Image
+    except ImportError:
+        return False
+    target_width, target_height = parse_size(args.portrait_size)
+    aspect = parse_aspect(args.portrait_aspect)
+    with Image.open(path) as image:
+        image = image.convert("RGB")
+        crop_width, crop_height, offset_x, offset_y = portrait_crop_geometry(
+            image.width,
+            image.height,
+            aspect,
+            args.portrait_crop_y,
+        )
+        cropped = image.crop((offset_x, offset_y, offset_x + crop_width, offset_y + crop_height))
+        resized = cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        tmp_path = path.with_name(f".{path.name}.{os.getpid()}.postprocess.png")
+        resized.save(tmp_path, format="PNG")
+    tmp_path.replace(path)
+    return True
+
+
+def postprocess_portrait_crop_with_sips(path: Path, args: argparse.Namespace) -> None:
+    target_width, target_height = parse_size(args.portrait_size)
+    aspect = parse_aspect(args.portrait_aspect)
+    width, height = sips_image_size(path)
+    crop_width, crop_height, offset_x, offset_y = portrait_crop_geometry(
+        width,
+        height,
+        aspect,
+        args.portrait_crop_y,
+    )
+    crop_path = path.with_name(f".{path.name}.{os.getpid()}.crop.png")
+    out_path = path.with_name(f".{path.name}.{os.getpid()}.out.png")
+    try:
+        subprocess.run(
+            [
+                sips_path(),
+                "-s",
+                "format",
+                "png",
+                "--cropToHeightWidth",
+                str(crop_height),
+                str(crop_width),
+                "--cropOffset",
+                str(offset_y),
+                str(offset_x),
+                str(path),
+                "--out",
+                str(crop_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            [
+                sips_path(),
+                "--resampleHeightWidth",
+                str(target_height),
+                str(target_width),
+                str(crop_path),
+                "--out",
+                str(out_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        out_path.replace(path)
+    finally:
+        for tmp_path in (crop_path, out_path):
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+
+def postprocess_image_file(path: Path, args: argparse.Namespace) -> None:
+    if args.postprocess == "none":
+        return
+    if args.postprocess != "portrait-crop":
+        raise RuntimeError(f"Unsupported postprocess mode: {args.postprocess}")
+    if postprocess_portrait_crop_with_pillow(path, args):
+        return
+    postprocess_portrait_crop_with_sips(path, args)
+
+
+def write_generated_image(path: Path, image_bytes: bytes, args: argparse.Namespace) -> None:
+    if args.postprocess == "none":
+        atomic_write_bytes(path, image_bytes)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    input_path = path.with_name(
+        f".{path.name}.{os.getpid()}.input{detect_image_extension(image_bytes)}"
+    )
+    try:
+        input_path.write_bytes(image_bytes)
+        postprocess_image_file(input_path, args)
+        input_path.replace(path)
+    finally:
+        if input_path.exists():
+            input_path.unlink()
+
+
 def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -720,6 +932,15 @@ def main() -> int:
             for variant_index in range(1, args.variant_count + 1):
                 path = output_path(character_id, expression, args.variant_count, variant_index)
                 url = character_url(character_id, expression, path)
+                if args.postprocess_existing:
+                    if not path.exists():
+                        print(f"skip missing: {path.relative_to(APP_ROOT)}")
+                        continue
+                    print(f"postprocess: {path.relative_to(APP_ROOT)}")
+                    if not args.dry_run:
+                        postprocess_image_file(path, args)
+                    generated_urls.append(url)
+                    continue
                 if path.exists() and not args.overwrite:
                     print(f"skip existing: {path.relative_to(APP_ROOT)}")
                     generated_urls.append(url)
@@ -733,7 +954,7 @@ def main() -> int:
                     continue
                 started = time.time()
                 image_bytes = generate_image(prompt, args, ref_path)
-                atomic_write_bytes(path, image_bytes)
+                write_generated_image(path, image_bytes, args)
                 write_metadata(
                     path,
                     {
@@ -745,6 +966,9 @@ def main() -> int:
                         "referenceExpression": reference_expression or None,
                         "referencePath": str(ref_path.relative_to(APP_ROOT)) if ref_path else None,
                         "size": args.size,
+                        "postprocess": args.postprocess,
+                        "portraitAspect": args.portrait_aspect if args.postprocess != "none" else None,
+                        "portraitSize": args.portrait_size if args.postprocess != "none" else None,
                         "createdAt": int(time.time()),
                     },
                 )

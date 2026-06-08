@@ -203,6 +203,7 @@ python3.10 -B tools/generate_character_images.py \
   --google-model gemini-3.1-flash-image \
   --character akari \
   --expression neutral \
+  --postprocess portrait-crop \
   --update-profiles
 
 python3.10 -B tools/generate_character_images.py \
@@ -212,8 +213,11 @@ python3.10 -B tools/generate_character_images.py \
   --all-profile-expressions \
   --reference-expression neutral \
   --skip-reference-expression \
+  --postprocess portrait-crop \
   --update-profiles
 ```
+
+`--postprocess portrait-crop` は生成後の画像を `3:4` の縦長、標準では `768x1024` に中央寄せでクロップし、PNGとして保存します。Google APIが横長画像を返した場合でも、保存されるキャラクター画像の比率を揃えられます。より明示的に指定する場合は `--portrait-aspect 3:4` と `--portrait-size 768x1024` を追加します。
 
 既存の生成済み画像を作り直す場合は `--overwrite` を付けます。
 
@@ -225,8 +229,20 @@ python3.10 -B tools/generate_character_images.py \
   --all-profile-expressions \
   --reference-expression neutral \
   --skip-reference-expression \
+  --postprocess portrait-crop \
   --overwrite \
   --update-profiles
+```
+
+APIを呼ばずに、既存の生成済み画像だけを縦長へ揃える場合は `--postprocess-existing` を使います。
+
+```bash
+python3.10 -B tools/generate_character_images.py \
+  --provider nano-banana \
+  --character akari \
+  --all-profile-expressions \
+  --postprocess portrait-crop \
+  --postprocess-existing
 ```
 
 OpenAI APIで生成する場合は `OPENAI_API_KEY` を設定します。
